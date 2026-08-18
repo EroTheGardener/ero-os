@@ -1581,8 +1581,9 @@ function BudgetTab({ txns, rules, budgets, setBudgets, categories, startYM }) {
   return (
     <div>
       <div style={{ fontFamily: T.mono, fontSize: 12, color: T.muted, marginBottom: 16 }}>
-        Averages come from your last {histMonths.length || "—"} full months of imported activity
-        {histMonths.length ? ` (${histMonths.map(prettyYM).join(", ")})` : " — upload CSVs on the Spending tab first"}.
+        {histMonths.length
+          ? `Averages come from your last ${histMonths.length} full months of imported activity (${histMonths.map(prettyYM).join(", ")}).`
+          : "No imported activity yet. Upload CSVs on the Spending tab and averages fill in here."}{" "}
         Income is additive and stays at the top. Expense categories subtract from net cash flow.
       </div>
 
