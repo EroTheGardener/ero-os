@@ -232,10 +232,15 @@ function prettyYM(ym) {
 
 /* ---------- payoff simulation (with one-time events) ---------- */
 
+// A promo-rate card's real APR depends on the month: still the teaser rate
+// before promoEnd, the real aprAfter once it lapses. Shared with the
+// Dashboard's monthly-interest display so both agree with each other.
+function effApr(d, ym) {
+  return d.promoEnd && d.aprAfter != null && ym > d.promoEnd ? d.aprAfter : d.apr;
+}
+
 function simulate(debts, budget, strategy, startYM, events = []) {
   const live = debts.filter((d) => d.balance > 0.005).map((d) => ({ ...d, bal: d.balance }));
-  const effApr = (d, ym) =>
-    d.promoEnd && d.aprAfter != null && ym > d.promoEnd ? d.aprAfter : d.apr;
   const rank = (d, ym) => {
     if (strategy === "avalanche") return -effApr(d, ym);
     if (strategy === "snowball") return d.bal;
@@ -1149,21 +1154,50 @@ function DashboardTab({ debts, assets, results, txns, budgets, rules, Snapshots,
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>Positions</div>
           <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: T.mono, fontSize: 12 }}>
             <tbody>
-              {assets.filter((a) => a.value || a.owed).map((a) => (
-                <tr key={a.id}>
-                  <td style={{ padding: "5px 0", borderBottom: `1px dashed ${T.line}` }}>{a.name}</td>
-                  <td style={{ textAlign: "right", padding: "5px 0", borderBottom: `1px dashed ${T.line}`, color: T.moss }}>
-                    {fmt$((a.value || 0) - (a.owed || 0))}
-                    {a.owed ? <span style={{ color: T.muted }}> ({fmt$(a.value)} − {fmt$(a.owed)})</span> : null}
-                  </td>
-                </tr>
-              ))}
-              {debts.filter((d) => d.balance > 0).map((d) => (
-                <tr key={d.id}>
-                  <td style={{ padding: "5px 0", borderBottom: `1px dashed ${T.line}` }}>{d.name}</td>
-                  <td style={{ textAlign: "right", padding: "5px 0", borderBottom: `1px dashed ${T.line}`, color: T.rust }}>−{fmt$(d.balance)}</td>
-                </tr>
-              ))}
+              {assets.filter((a) => a.value || a.owed).map((a) => {
+                const monthlyInt = a.owed && a.apr ? (a.owed * a.apr) / 1200 : 0;
+                return (
+                  <tr key={a.id}>
+                    <td style={{ padding: "5px 0", borderBottom: `1px dashed ${T.line}` }}>{a.name}</td>
+                    <td style={{ textAlign: "right", padding: "5px 0 5px 10px", borderBottom: `1px dashed ${T.line}`, color: T.muted, whiteSpace: "nowrap" }}>
+                      {a.owed && a.apr ? `${a.apr}%` : ""}
+                    </td>
+                    <td style={{ textAlign: "right", padding: "5px 0 5px 10px", borderBottom: `1px dashed ${T.line}`, color: T.muted, whiteSpace: "nowrap" }}>
+                      {monthlyInt ? fmt$(monthlyInt) + "/mo" : ""}
+                    </td>
+                    <td style={{ textAlign: "right", padding: "5px 0 5px 10px", borderBottom: `1px dashed ${T.line}`, color: T.moss }}>
+                      {fmt$((a.value || 0) - (a.owed || 0))}
+                      {a.owed ? <span style={{ color: T.muted }}> ({fmt$(a.value)} − {fmt$(a.owed)})</span> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+              {debts.filter((d) => d.balance > 0).map((d) => {
+                const monthlyInt = (d.balance * effApr(d, startYM)) / 1200;
+                return (
+                  <tr key={d.id}>
+                    <td style={{ padding: "5px 0", borderBottom: `1px dashed ${T.line}` }}>{d.name}</td>
+                    <td style={{ textAlign: "right", padding: "5px 0 5px 10px", borderBottom: `1px dashed ${T.line}`, color: T.muted, whiteSpace: "nowrap" }}>
+                      {effApr(d, startYM)}%
+                    </td>
+                    <td style={{ textAlign: "right", padding: "5px 0 5px 10px", borderBottom: `1px dashed ${T.line}`, color: T.muted, whiteSpace: "nowrap" }}>
+                      {fmt$(monthlyInt)}/mo
+                    </td>
+                    <td style={{ textAlign: "right", padding: "5px 0 5px 10px", borderBottom: `1px dashed ${T.line}`, color: T.rust }}>−{fmt$(d.balance)}</td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td style={{ padding: "6px 0 0", fontWeight: 700 }}>Total monthly interest</td>
+                <td />
+                <td style={{ textAlign: "right", padding: "6px 0 0 10px", fontWeight: 700, color: T.rust, whiteSpace: "nowrap" }}>
+                  {fmt$(
+                    debts.filter((d) => d.balance > 0).reduce((s, d) => s + (d.balance * effApr(d, startYM)) / 1200, 0) +
+                    assets.reduce((s, a) => s + (a.owed && a.apr ? (a.owed * a.apr) / 1200 : 0), 0)
+                  )}/mo
+                </td>
+                <td />
+              </tr>
             </tbody>
           </table>
           {!assets.some((a) => a.value || a.owed) && (
@@ -2394,8 +2428,16 @@ function SnapshotsTab({ debts, assets, setAssets, Snapshots, setSnapshots }) {
                 <Label>Owed against</Label>
                 <Num value={a.owed} onChange={(v) => updAsset(a.id, { owed: v || 0 })} step={1000} />
               </div>
+              <div style={{ flex: "0 0 90px" }}>
+                <Label>Rate %</Label>
+                <Num value={a.apr} onChange={(v) => updAsset(a.id, { apr: v })} step={0.01} />
+              </div>
               <div style={{ flex: "0 0 120px", paddingBottom: 7, fontFamily: T.mono, fontSize: 13, color: T.moss, fontWeight: 600 }}>
                 = {fmt$((a.value || 0) - (a.owed || 0))}
+              </div>
+              <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+                <Label>Note</Label>
+                <input style={inputStyle} value={a.note || ""} onChange={(e) => updAsset(a.id, { note: e.target.value })} />
               </div>
               <button onClick={() => setAssets(assets.filter((x) => x.id !== a.id))} style={{ ...btnGhost, color: T.rust, borderColor: T.rust }}>✕</button>
             </div>
