@@ -8,7 +8,6 @@ import QuoteStudio from "./gnws-quote-studio.jsx";
 import DelegateBoard from "./delegate-board.jsx";
 import WorkBoard from "./work-board.jsx";
 import DebtPayoff from "./DebtPayoff.jsx";
-import LocalAI from "./local-ai.jsx";
 
 /* Crash catcher: if an app throws, show the error and recovery options
    instead of a blank white page. */
@@ -70,10 +69,13 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+const APPS = ["eroos", "quotes", "delegate", "work", "financials"];
+
 function Root() {
-  const [app, setApp] = useState(
-    () => localStorage.getItem("gnws-active-app") || "eroos"
-  );
+  const [app, setApp] = useState(() => {
+    const saved = localStorage.getItem("gnws-active-app");
+    return APPS.includes(saved) ? saved : "eroos";
+  });
   const pick = (a) => {
     setApp(a);
     localStorage.setItem("gnws-active-app", a);
@@ -104,7 +106,6 @@ function Root() {
     if (app === "delegate") return <DelegateBoard />;
     if (app === "work") return <WorkBoard />;
     if (app === "financials") return <DebtPayoff />;
-    if (app === "localai") return <LocalAI />;
     return <EroOS />;
   };
 
@@ -133,7 +134,6 @@ function Root() {
         {pill("delegate", "DELEGATE")}
         {pill("work", "WORK")}
         {pill("financials", "FINANCIALS")}
-        {pill("localai", "LOCAL AI")}
       </div>
     </>
   );
