@@ -370,8 +370,10 @@ function merchantKey(desc) {
 
 const INCOME_CATEGORY = "Income";
 const TRANSFER_CATEGORY = "Transfers & Payments";
-const INCOME_CATEGORIES = [INCOME_CATEGORY, "Rental Income", "Business Income", "Personal Sales"];
-const DEFAULT_CATEGORIES = ["Rental Income", "Business Income", "Personal Sales", TRANSFER_CATEGORY];
+// Personal budget only - business income/spending is tracked elsewhere, on
+// purpose, so it never belongs in this default set even if a saved list omits it.
+const INCOME_CATEGORIES = [INCOME_CATEGORY, "Rental Income", "Personal Sales"];
+const DEFAULT_CATEGORIES = ["Rental Income", "Personal Sales", TRANSFER_CATEGORY];
 
 function isIncomeCategory(cat) {
   return INCOME_CATEGORIES.includes(cat);
