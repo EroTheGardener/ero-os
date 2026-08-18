@@ -9,11 +9,12 @@
    loads this app pointed at the same Supabase project — phone
    and computer both read/write the same rows.
 
-   Local caching: each key is also mirrored into localStorage as a
-   fast local cache and offline fallback. On load, the shim serves
-   the local cache immediately (so the UI doesn't sit blank) and
-   kicks off a background refresh from Supabase, updating once the
-   network responds. Every write goes to Supabase first (source of
+   Local caching: each key is also mirrored into localStorage, used
+   only as an offline fallback. Every read tries Supabase first and
+   only falls back to the local copy if the network is unreachable —
+   this module autosaves on load, so serving a stale local copy first
+   would mean that autosave pushes the stale data over whatever's
+   actually newest. Every write goes to Supabase first (source of
    truth), then updates the local cache.
 
    Config: reads window.__SUPABASE_URL__ and window.__SUPABASE_KEY__,
@@ -97,24 +98,25 @@
 
   window.storage = {
     // Returns the local cache immediately if present; if nothing local,
-    // waits on the network. Either way, a background refresh runs so
-    // subsequent reads (or a manual reload) pick up remote changes made
-    // from another device.
+    // waits on the network. Every module here autosaves on load (it writes
+    // back whatever get() returns), so serving a stale local copy while a
+    // newer one sits in Supabase is not just a slow-to-update display bug —
+    // that autosave pushes the stale copy over the real one, undoing
+    // changes made from another device. So this tries the network first
+    // and only falls back to the local copy if the network is unreachable.
     async get(key) {
-      const cached = localGet(key);
-      if (cached !== null) {
-        // background refresh, don't block the caller
-        fetchRemote(key)
-          .then((remoteVal) => {
-            if (remoteVal !== null && remoteVal !== cached) localSet(key, remoteVal);
-          })
-          .catch(() => {});
-        return { key, value: cached, shared: false };
+      try {
+        const remoteVal = await fetchRemote(key);
+        if (remoteVal !== null) {
+          localSet(key, remoteVal);
+          return { key, value: remoteVal, shared: false };
+        }
+      } catch {
+        // offline, or Supabase unreachable — fall back to the local copy below
       }
-      const remoteVal = await fetchRemote(key);
-      if (remoteVal === null) throw new Error(`Key not found: ${key}`);
-      localSet(key, remoteVal);
-      return { key, value: remoteVal, shared: false };
+      const cached = localGet(key);
+      if (cached !== null) return { key, value: cached, shared: false };
+      throw new Error(`Key not found: ${key}`);
     },
 
     async set(key, value) {
