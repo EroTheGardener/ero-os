@@ -29,7 +29,7 @@ const STRATS = [
 const EVENT_TYPES = ["Windfall / sale", "Balloon payment", "Refi cash-out", "Inheritance", "Other"];
 
 const SEED_DEBTS = [
-  { id: "excite-loan", name: "Excite Personal Loan", balance: 20680, apr: 11.0, minPayment: 503, dueDay: null, autopay: false, note: "fixed $503/mo — verify APR" },
+  { id: "excite-loan", name: "Excite Personal Loan", balance: 19177.04, apr: 11.99, minPayment: 503, dueDay: null, autopay: false, note: "fixed $503/mo - 11.99% per 9/30/26 statement" },
   { id: "excite-cc", name: "Excite Credit", balance: 22355, apr: 14.15, minPayment: 450, dueDay: null, autopay: false, note: "" },
   { id: "usb-0452", name: "US Bank 0452", balance: 10523, apr: 19.24, minPayment: 250, dueDay: null, autopay: false, note: "" },
   { id: "usb-0292", name: "US Bank 0292", balance: 2364, apr: 18.24, minPayment: 60, dueDay: null, autopay: false, note: "" },
@@ -170,7 +170,46 @@ const APPEND_RULES = [
   { keyword: "good news wood", category: "Business Income" },
   { keyword: "ecocamp coyote", category: "Business Income" },
   { keyword: "stripe inc", category: "Business Income" },
+  // --- added Oct 2026 full bank import ---
+  { keyword: "michael osterback", category: "Business Income" },
+  { keyword: "robinhood", category: "Personal Sales" },
+  { keyword: "coinbase", category: "Personal Sales" },
+  { keyword: "amerihome", category: "Housing: Mortgage" },
+  { keyword: "nevada county ta", category: "Property Tax" },
+  { keyword: "pgande", category: "Utilities" },
+  { keyword: "united fin cas", category: "Insurance" },
+  { keyword: "california fair", category: "Insurance" },
+  { keyword: "bamboo insurance", category: "Insurance" },
+  { keyword: "csaa insurance", category: "Insurance" },
+  { keyword: "sofi securities", category: "Savings & Investing" },
+  { keyword: "equity trust", category: "Savings & Investing" },
+  { keyword: "to ero us bank", category: "Transfers & Payments" },
+  { keyword: "payment reversal", category: "Transfers & Payments" },
+  { keyword: "overdraft paid fee", category: "Finance: Fees" },
+  { keyword: "monthly maintenance fee", category: "Finance: Fees" },
+  { keyword: "rocket money", category: "Subscriptions" },
+  { keyword: "google *google one", category: "Subscriptions" },
+  { keyword: "amazon prime", category: "Subscriptions" },
+  { keyword: "whitepages", category: "Subscriptions" },
+  { keyword: "openart", category: "Software & AI" },
+  { keyword: "homedepot.com", category: "Property & Home" },
+  { keyword: "veterinary", category: "Pets" },
+  { keyword: "dentistry", category: "Health" },
 ];
+
+// One-time corrections to saved debts, applied on load. Each only fires while
+// the debt still holds the old stale value, so manual edits are never overwritten.
+const DEBT_CORRECTIONS = [
+  // Excite statement 09/30/2026: principal $19,177.04 at 11.99%
+  { id: "excite-loan", when: (d) => d.balance === 20680, patch: { balance: 19177.04, apr: 11.99, minPayment: 503, note: "fixed $503/mo - 11.99% per 9/30/26 statement" } },
+];
+
+function applyDebtCorrections(debts = []) {
+  return (debts || []).map((d) => {
+    const fix = DEBT_CORRECTIONS.find((c) => c.id === d.id && c.when(d));
+    return fix ? { ...d, ...fix.patch } : d;
+  });
+}
 
 function mergeAppendedRules(existing = []) {
   const out = [...(existing || [])];
@@ -323,7 +362,8 @@ function detectColumns(header) {
   return {
     date: find(["transaction date", "posted date", "post date", "date"]),
     desc: find(["description", "payee", "name", "memo", "details"]),
-    amount: find(["amount"]),
+    // "Amount Debit" / "Amount Credit" split columns must not be read as one amount column
+    amount: h.findIndex((c) => c.includes("amount") && !c.includes("debit") && !c.includes("credit")),
     debit: find(["debit", "withdrawal"]),
     credit: find(["credit", "deposit"]),
   };
@@ -358,8 +398,12 @@ function parseDateToYM(s) {
 }
 
 function categorize(desc, rules) {
-  const d = desc.toLowerCase();
-  for (const r of rules) if (r.keyword && d.includes(r.keyword.toLowerCase())) return r.category;
+  // Banks pad names with runs of spaces ("PAYMENT   THANK YOU"), so collapse whitespace on both sides.
+  const d = String(desc || "").toLowerCase().replace(/\s+/g, " ");
+  for (const r of rules) {
+    const k = String(r.keyword || "").toLowerCase().replace(/\s+/g, " ");
+    if (k && d.includes(k)) return r.category;
+  }
   return "Uncategorized";
 }
 
@@ -390,9 +434,18 @@ function categoryForTxn(txn, rules) {
 }
 
 function positiveTransferCategory(desc) {
-  const d = String(desc || "").toLowerCase();
+  // US Bank exports "PAYMENT   THANK YOU" with padded spaces - without collapsing them,
+  // every card payment was being counted as income.
+  const d = String(desc || "").toLowerCase().replace(/\s+/g, " ");
   const transferHints = [
     "payment thank you",
+    "payment - thank you",
+    "online ach payment",
+    "points redeemed",
+    "fee waived",
+    "from eric gorski",
+    "external deposit egorski",
+    "ero us bank",
     "automatic payment",
     "auto-pay thank you",
     "mobile payment thank you",
@@ -821,7 +874,7 @@ export default function DebtPayoff() {
     loadState().then((saved) => {
       if (cancelled) return;
       if (saved) {
-        setDebts(saved.debts || SEED_DEBTS);
+        setDebts(applyDebtCorrections(saved.debts || SEED_DEBTS));
         setAssets(saved.assets || SEED_ASSETS);
         setBudget(saved.budget ?? 1600);
         setEvents(saved.events || []);
@@ -1740,7 +1793,13 @@ function SpendingTab({ txns, setTxns, rules, setRules, budgets, setBudgets, cate
     let next = [...txns];
     for (const f of files) {
       const text = await f.text();
-      const rows = parseCSV(text);
+      let rows = parseCSV(text);
+      // Some banks (Excite CU) put "Account Name : ..." lines above the real header row.
+      const headerIdx = rows.findIndex((r) => {
+        const c = detectColumns(r);
+        return c.date >= 0 && (c.amount >= 0 || c.debit >= 0);
+      });
+      if (headerIdx > 0) rows = rows.slice(headerIdx);
       if (rows.length < 2) continue;
       const cols = detectColumns(rows[0]);
       if (cols.date < 0 || (cols.amount < 0 && cols.debit < 0)) {
@@ -1760,7 +1819,7 @@ function SpendingTab({ txns, setTxns, rules, setRules, budgets, setBudgets, cate
         } else {
           const deb = parseFloat((r[cols.debit] || "0").replace(/[$,]/g, "")) || 0;
           const cred = cols.credit >= 0 ? parseFloat((r[cols.credit] || "0").replace(/[$,]/g, "")) || 0 : 0;
-          amt = cred - deb;
+          amt = Math.abs(cred) - Math.abs(deb); // some banks export debits already negative
         }
         if (isNaN(amt) || amt === 0) { skipped++; continue; }
         const desc = cols.desc >= 0 ? (r[cols.desc] || "").trim() : "";
