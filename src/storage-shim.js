@@ -78,6 +78,29 @@
     if (!res.ok) throw new Error(`Supabase write failed (${res.status})`);
   }
 
+  // One write in flight per key. Fast edits (typing 11.99) used to fire parallel
+  // upserts that could land out of order, leaving an older value (11) saved.
+  // While a write is in flight we only remember the newest value and send that next.
+  const inflight = {};
+  const pending = {};
+  function queuedUpsert(key, value) {
+    pending[key] = value;
+    if (!inflight[key]) {
+      inflight[key] = (async () => {
+        try {
+          while (pending[key] !== undefined) {
+            const v = pending[key];
+            delete pending[key];
+            await upsertRemote(key, v);
+          }
+        } finally {
+          delete inflight[key];
+        }
+      })();
+    }
+    return inflight[key];
+  }
+
   async function deleteRemote(key) {
     const res = await fetch(restUrl(`${TABLE}?key=eq.${encodeURIComponent(key)}`), {
       method: "DELETE",
@@ -121,7 +144,7 @@
 
     async set(key, value) {
       localSet(key, value); // update local cache immediately for snappy UI
-      await upsertRemote(key, value); // then push to shared store
+      await queuedUpsert(key, value); // then push to shared store, in order
       return { key, value, shared: false };
     },
 
