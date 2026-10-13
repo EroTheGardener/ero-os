@@ -167,13 +167,17 @@ const SEED_RULES = [
 
 const APPEND_RULES = [
   { keyword: "airbnb", category: "Rental Income" },
-  // GNWS W-2 payroll lands as "GOOD NEWS WOOD S". Zelles from the business are not payroll.
-  { keyword: "payment from good news wood", category: "Business Income" },
+  // GNWS W-2 payroll lands as "GOOD NEWS WOOD S". Zelles from GNWS into personal
+  // accounts are personal income too, just not payroll. Must stay above the payroll rule.
+  { keyword: "payment from good news wood", category: "Income" },
   { keyword: "good news wood", category: "Paycheck" },
-  { keyword: "ecocamp coyote", category: "Business Income" },
+  // Leo / Ecocamp Coyote: short-term pass-through loans, paid in and paid right back.
+  { keyword: "ecocamp coyote", category: "Transfers & Payments" },
   { keyword: "stripe inc", category: "Business Income" },
   // --- added Oct 2026 full bank import ---
-  { keyword: "michael osterback", category: "Business Income" },
+  { keyword: "michael osterback", category: "Transfers & Payments" },
+  { keyword: "payment to leo", category: "Transfers & Payments" },
+  { keyword: "pmt to leo", category: "Transfers & Payments" },
   { keyword: "robinhood", category: "Personal Sales" },
   { keyword: "coinbase", category: "Personal Sales" },
   { keyword: "amerihome", category: "Housing: Mortgage" },
@@ -220,8 +224,12 @@ function migrateSavedRules(existing = []) {
   for (const r of existing || []) {
     const k = String(r.keyword || "").toLowerCase();
     if (k === "good news wood" && r.category === "Business Income") {
-      out.push({ keyword: "payment from good news wood", category: "Business Income" });
+      out.push({ keyword: "payment from good news wood", category: "Income" });
       out.push({ keyword: "good news wood", category: "Paycheck" });
+    } else if (k === "payment from good news wood" && r.category === "Business Income") {
+      out.push({ ...r, category: "Income" });
+    } else if ((k === "ecocamp coyote" || k === "michael osterback") && r.category === "Business Income") {
+      out.push({ ...r, category: "Transfers & Payments" });
     } else out.push(r);
   }
   return out;
@@ -462,6 +470,9 @@ function positiveTransferCategory(desc) {
     "from eric gorski",
     "external deposit egorski",
     "ero us bank",
+    // Leo / Ecocamp Coyote pass-through loans - money in that goes right back out.
+    "michael osterback",
+    "ecocamp coyote",
     "automatic payment",
     "auto-pay thank you",
     "mobile payment thank you",
