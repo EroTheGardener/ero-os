@@ -1832,23 +1832,34 @@ function SpendingTab({ txns, setTxns, rules, setRules, budgets, setBudgets, cate
       const neg = parsed.length - pos;
       const flip = pos > neg * 2;
       if (flip) notes.push(`${f.name}: charges were positive — flipped so spending reads as money out.`);
+      // Rows already saved before this file. Matching against this snapshot (not the
+      // growing list) means two genuine identical rows in one export - same day, same
+      // merchant, same amount - both get kept instead of the second being called a dup.
+      const before = next;
+      const seenInFile = {};
       for (const p of parsed) {
         const amount = flip ? -p.amt : p.amt;
-        const key = makeTxnKey({ date: p.date, ym: p.ym, desc: p.desc, amount, source: f.name });
-        const existingIdx = next.findIndex((t) =>
+        const baseKey = makeTxnKey({ date: p.date, ym: p.ym, desc: p.desc, amount, source: f.name });
+        const occ = seenInFile[baseKey] || 0;
+        seenInFile[baseKey] = occ + 1;
+        const key = occ ? `${baseKey}#${occ + 1}` : baseKey;
+        const existingIdx = before.findIndex((t) =>
           t.key === key ||
           duplicateKeyForTxn(t) === key ||
-          isSameLegacyTxn(t, p, amount, f.name)
+          // Legacy rows saved without a date only: matching dated rows by month would
+          // swallow recurring same-amount deposits (two paychecks in one month).
+          (!t.date && isSameLegacyTxn(t, p, amount, f.name))
         );
         if (existingIdx >= 0) {
-          if (!next[existingIdx].date && p.date) {
-            next[existingIdx] = { ...next[existingIdx], date: p.date, ym: p.ym };
+          if (!before[existingIdx].date && p.date) {
+            const i = next.indexOf(before[existingIdx]);
+            if (i >= 0) next[i] = { ...next[i], date: p.date, ym: p.ym };
             updatedDates++;
           }
           skipped++;
           continue;
         }
-        next.push({ key, date: p.date, ym: p.ym, desc: p.desc, amount, source: f.name });
+        next = [...next, { key, date: p.date, ym: p.ym, desc: p.desc, amount, source: f.name }];
         added++;
       }
     }
