@@ -167,7 +167,9 @@ const SEED_RULES = [
 
 const APPEND_RULES = [
   { keyword: "airbnb", category: "Rental Income" },
-  { keyword: "good news wood", category: "Business Income" },
+  // GNWS W-2 payroll lands as "GOOD NEWS WOOD S". Zelles from the business are not payroll.
+  { keyword: "payment from good news wood", category: "Business Income" },
+  { keyword: "good news wood", category: "Paycheck" },
   { keyword: "ecocamp coyote", category: "Business Income" },
   { keyword: "stripe inc", category: "Business Income" },
   // --- added Oct 2026 full bank import ---
@@ -211,8 +213,22 @@ function applyDebtCorrections(debts = []) {
   });
 }
 
+// Saved rules that used to file GNWS payroll as Business Income. Swapped in place
+// (same position, since rules are first-match) for the Zelle + payroll pair.
+function migrateSavedRules(existing = []) {
+  const out = [];
+  for (const r of existing || []) {
+    const k = String(r.keyword || "").toLowerCase();
+    if (k === "good news wood" && r.category === "Business Income") {
+      out.push({ keyword: "payment from good news wood", category: "Business Income" });
+      out.push({ keyword: "good news wood", category: "Paycheck" });
+    } else out.push(r);
+  }
+  return out;
+}
+
 function mergeAppendedRules(existing = []) {
-  const out = [...(existing || [])];
+  const out = migrateSavedRules(existing);
   const seen = new Set(out.map((r) => `${String(r.keyword || "").toLowerCase()}|${String(r.category || "").toLowerCase()}`));
   for (const r of APPEND_RULES) {
     const k = `${r.keyword.toLowerCase()}|${r.category.toLowerCase()}`;
@@ -416,8 +432,8 @@ const INCOME_CATEGORY = "Income";
 const TRANSFER_CATEGORY = "Transfers & Payments";
 // Personal budget only - business income/spending is tracked elsewhere, on
 // purpose, so it never belongs in this default set even if a saved list omits it.
-const INCOME_CATEGORIES = [INCOME_CATEGORY, "Rental Income", "Personal Sales"];
-const DEFAULT_CATEGORIES = ["Rental Income", "Personal Sales", TRANSFER_CATEGORY];
+const INCOME_CATEGORIES = [INCOME_CATEGORY, "Paycheck", "Rental Income", "Personal Sales"];
+const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Personal Sales", TRANSFER_CATEGORY];
 
 function isIncomeCategory(cat) {
   return INCOME_CATEGORIES.includes(cat);
