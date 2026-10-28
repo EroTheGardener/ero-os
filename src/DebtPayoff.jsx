@@ -178,6 +178,7 @@ const APPEND_RULES = [
   { keyword: "michael osterback", category: "Transfers & Payments" },
   { keyword: "payment to leo", category: "Transfers & Payments" },
   { keyword: "pmt to leo", category: "Transfers & Payments" },
+  { keyword: "matthew sommer", category: "Vehicle & Equipment" }, // Matt - van work
   { keyword: "robinhood", category: "Personal Sales" },
   { keyword: "coinbase", category: "Personal Sales" },
   { keyword: "amerihome", category: "Housing: Mortgage" },
