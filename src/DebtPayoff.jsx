@@ -72,13 +72,13 @@ const SEED_RULES = [
   { keyword: "sp naito", category: "Vehicle & Equipment" },
 
   // --- Property & home ---
-  { keyword: "home depot", category: "Property & Home" },
-  { keyword: "lowes", category: "Property & Home" },
-  { keyword: "b & c home", category: "Property & Home" },
-  { keyword: "hansen bros", category: "Property & Home" },
+  { keyword: "home depot", category: "Property Projects" },
+  { keyword: "lowes", category: "Property Projects" },
+  { keyword: "b & c home", category: "Property Projects" },
+  { keyword: "hansen bros", category: "Property Projects" },
   { keyword: "recology", category: "Property & Home" },
   { keyword: "wm_mccourtney", category: "Property & Home" },
-  { keyword: "hills flat", category: "Property & Home" },
+  { keyword: "hills flat", category: "Property Projects" },
 
   // --- Insurance ---
   { keyword: "progressive ins", category: "Insurance" },
@@ -199,7 +199,7 @@ const APPEND_RULES = [
   { keyword: "amazon prime", category: "Subscriptions" },
   { keyword: "whitepages", category: "Subscriptions" },
   { keyword: "openart", category: "Software & AI" },
-  { keyword: "homedepot.com", category: "Property & Home" },
+  { keyword: "homedepot.com", category: "Property Projects" },
   { keyword: "veterinary", category: "Pets" },
   { keyword: "dentistry", category: "Health" },
 ];
@@ -218,6 +218,9 @@ function applyDebtCorrections(debts = []) {
   });
 }
 
+// Building suppliers whose purchases are rental build-out, not household upkeep.
+const PROJECT_SUPPLIERS = ["home depot", "lowes", "b & c home", "hansen bros", "hills flat", "homedepot.com"];
+
 // Saved rules that used to file GNWS payroll as Business Income. Swapped in place
 // (same position, since rules are first-match) for the Zelle + payroll pair.
 function migrateSavedRules(existing = []) {
@@ -229,6 +232,8 @@ function migrateSavedRules(existing = []) {
       out.push({ keyword: "good news wood", category: "Paycheck" });
     } else if (k === "payment from good news wood" && r.category === "Business Income") {
       out.push({ ...r, category: "Income" });
+    } else if (PROJECT_SUPPLIERS.includes(k) && r.category === "Property & Home") {
+      out.push({ ...r, category: "Property Projects" });
     } else if ((k === "ecocamp coyote" || k === "michael osterback") && r.category === "Business Income") {
       out.push({ ...r, category: "Transfers & Payments" });
     } else out.push(r);
@@ -442,7 +447,9 @@ const TRANSFER_CATEGORY = "Transfers & Payments";
 // Personal budget only - business income/spending is tracked elsewhere, on
 // purpose, so it never belongs in this default set even if a saved list omits it.
 const INCOME_CATEGORIES = [INCOME_CATEGORY, "Paycheck", "Rental Income", "Personal Sales"];
-const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Personal Sales", TRANSFER_CATEGORY];
+// Property Projects = build-out spending meant to come back as rental income.
+const PROJECTS_CATEGORY = "Property Projects";
+const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Personal Sales", PROJECTS_CATEGORY, TRANSFER_CATEGORY];
 
 function isIncomeCategory(cat) {
   return INCOME_CATEGORIES.includes(cat);
@@ -907,7 +914,7 @@ export default function DebtPayoff() {
         setBudget(saved.budget ?? 1600);
         setEvents(saved.events || []);
         setRules(mergeAppendedRules(saved.rules || SEED_RULES));
-        setBudgets(saved.budgets || {});
+        setBudgets({ "Property Projects": 1000, ...(saved.budgets || {}) });
         setCategories(normalizeSavedCategories(saved.categories || []));
         setTxns(normalizeSavedTxns(saved.txns || []));
         setSnapshots(saved.Snapshots || []);
@@ -1704,6 +1711,8 @@ function BudgetTab({ txns, rules, budgets, setBudgets, categories, startYM }) {
         Income is additive and stays at the top. Expense categories subtract from net cash flow.
       </div>
 
+      <RentalPaybackCard byCatMonth={byCatMonth} startYM={startYM} budget={budgets[PROJECTS_CATEGORY] || 0} />
+
       <div style={{ ...card, overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: T.mono, fontSize: 12 }}>
           <thead>
@@ -1754,6 +1763,43 @@ function BudgetTab({ txns, rules, budgets, setBudgets, categories, startYM }) {
           <input style={inputStyle} value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="e.g. Melody & dates" />
         </div>
         <button style={btnStyle} onClick={() => { if (newCat.trim()) { setBudgets({ ...budgets, [newCat.trim()]: 0 }); setNewCat(""); } }}>Add</button>
+      </div>
+    </div>
+  );
+}
+
+// Property projects are an investment in the rentals, so show them next to what the
+// rentals bring in: this year, the last 3 full months, and this month vs budget.
+function RentalPaybackCard({ byCatMonth, startYM, budget }) {
+  const year = startYM.slice(0, 4);
+  const proj = byCatMonth[PROJECTS_CATEGORY] || {};
+  const rent = byCatMonth["Rental Income"] || {};
+  const sumWhere = (m, f) => Object.entries(m).filter(([ym]) => f(ym)).reduce((s, [, v]) => s + v, 0);
+  const last3 = [1, 2, 3].map((n) => addMonths(startYM, -n));
+  const ytdProj = sumWhere(proj, (ym) => ym.startsWith(year));
+  const ytdRent = sumWhere(rent, (ym) => ym.startsWith(year));
+  const avgProj = sumWhere(proj, (ym) => last3.includes(ym)) / 3;
+  const avgRent = sumWhere(rent, (ym) => last3.includes(ym)) / 3;
+  const monthProj = proj[startYM] || 0;
+  const net = ytdRent - ytdProj;
+  const cell = (label, value, color, sub) => (
+    <div style={{ flex: "1 1 150px" }}>
+      <Label>{label}</Label>
+      <div style={{ fontFamily: T.mono, fontSize: 20, fontWeight: 600, color }}>{value}</div>
+      {sub && <div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+  return (
+    <div style={{ ...card, marginBottom: 16 }}>
+      <div style={{ fontFamily: T.sans, fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Rentals: projects in vs rent out</div>
+      <div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted, marginBottom: 12 }}>
+        Tag property work as {PROJECTS_CATEGORY} and tenant payments as Rental Income to keep this honest.
+      </div>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        {cell(`Projects ${year}`, fmt$(ytdProj), T.rust, `avg ${fmt$(avgProj)}/mo last 3 mo`)}
+        {cell(`Rent ${year}`, fmt$(ytdRent), T.moss, `avg ${fmt$(avgRent)}/mo last 3 mo`)}
+        {cell("Rent minus projects", fmt$(net), net >= 0 ? T.moss : T.rust, net >= 0 ? "rentals are paying their way" : "projects ahead of rent so far")}
+        {cell(`${prettyYM(startYM)} projects`, fmt$(monthProj), budget && monthProj > budget ? T.rust : T.ink, budget ? `budget ${fmt$(budget)} - ${monthProj > budget ? "over" : fmt$(budget - monthProj) + " left"}` : "no budget set")}
       </div>
     </div>
   );
