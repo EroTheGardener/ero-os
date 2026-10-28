@@ -167,6 +167,16 @@ const SEED_RULES = [
 
 const APPEND_RULES = [
   { keyword: "airbnb", category: "Rental Income" },
+  // Long-term tenants (Zelle rent)
+  { keyword: "dana mayfield", category: "Rental Income" },
+  { keyword: "iris bocianowski", category: "Rental Income" },
+  { keyword: "sade marie williams", category: "Rental Income" },
+  { keyword: "william beluchat", category: "Rental Income" },
+  { keyword: "jacob gorski", category: "Rental Income" },
+  { keyword: "isabel spiegel", category: "Rental Income" },
+  // Side hustle clients
+  { keyword: "richard walliser", category: "Side Hustle" },
+  { keyword: "robin michelle caminiti", category: "Side Hustle" },
   // GNWS W-2 payroll lands as "GOOD NEWS WOOD S". Zelles from GNWS into personal
   // accounts are personal income too, just not payroll. Must stay above the payroll rule.
   { keyword: "payment from good news wood", category: "Income" },
@@ -446,10 +456,10 @@ const INCOME_CATEGORY = "Income";
 const TRANSFER_CATEGORY = "Transfers & Payments";
 // Personal budget only - business income/spending is tracked elsewhere, on
 // purpose, so it never belongs in this default set even if a saved list omits it.
-const INCOME_CATEGORIES = [INCOME_CATEGORY, "Paycheck", "Rental Income", "Personal Sales"];
+const INCOME_CATEGORIES = [INCOME_CATEGORY, "Paycheck", "Rental Income", "Side Hustle", "Personal Sales"];
 // Property Projects = build-out spending meant to come back as rental income.
 const PROJECTS_CATEGORY = "Property Projects";
-const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Personal Sales", PROJECTS_CATEGORY, TRANSFER_CATEGORY];
+const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, TRANSFER_CATEGORY];
 
 function isIncomeCategory(cat) {
   return INCOME_CATEGORIES.includes(cat);
