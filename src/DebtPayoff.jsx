@@ -189,6 +189,7 @@ const APPEND_RULES = [
   { keyword: "payment to leo", category: "Transfers & Payments" },
   { keyword: "pmt to leo", category: "Transfers & Payments" },
   { keyword: "matthew sommer", category: "Vehicle & Equipment" }, // Matt - van work
+  { keyword: "pj walker", category: "Groceries" }, // eggs
   { keyword: "robinhood", category: "Personal Sales" },
   { keyword: "coinbase", category: "Personal Sales" },
   { keyword: "amerihome", category: "Housing: Mortgage" },
