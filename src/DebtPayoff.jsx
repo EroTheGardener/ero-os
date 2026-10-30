@@ -188,7 +188,9 @@ const APPEND_RULES = [
   { keyword: "michael osterback", category: "Transfers & Payments" },
   { keyword: "payment to leo", category: "Transfers & Payments" },
   { keyword: "pmt to leo", category: "Transfers & Payments" },
-  { keyword: "matthew sommer", category: "Vehicle & Equipment" }, // Matt - van work
+  // Moonlight = the van. Matt Sconzo and Matthew Sommerhiser both work on it.
+  { keyword: "matthew sommer", category: "Moonlight (van)" },
+  { keyword: "matt sconzo", category: "Moonlight (van)" },
   { keyword: "pj walker", category: "Groceries" }, // eggs
   { keyword: "robinhood", category: "Personal Sales" },
   { keyword: "coinbase", category: "Personal Sales" },
@@ -266,8 +268,12 @@ function normalizeSavedCategories(existing = []) {
   return Array.from(new Set([...(existing || []), ...DEFAULT_CATEGORIES])).sort(categorySort);
 }
 
+const MOONLIGHT_RE = /matt sconzo|matthew sommer/i;
+
 function normalizeSavedTxns(existing = []) {
   return (existing || []).map((t) => {
+    // Van work hand-tagged as Vehicle & Equipment before Moonlight had its own category.
+    if (t.category === "Vehicle & Equipment" && MOONLIGHT_RE.test(t.desc || "")) t = { ...t, category: "Moonlight (van)" };
     if (t.date && /^\d{4}-\d{2}-\d{2}$/.test(t.date)) return t;
     const first = String(t.key || "").split("|")[0];
     if (/^\d{4}-\d{2}-\d{2}$/.test(first)) return { ...t, date: first, ym: first.slice(0, 7) };
@@ -460,7 +466,7 @@ const TRANSFER_CATEGORY = "Transfers & Payments";
 const INCOME_CATEGORIES = [INCOME_CATEGORY, "Paycheck", "Rental Income", "Side Hustle", "Personal Sales"];
 // Property Projects = build-out spending meant to come back as rental income.
 const PROJECTS_CATEGORY = "Property Projects";
-const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, TRANSFER_CATEGORY];
+const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, "Moonlight (van)", TRANSFER_CATEGORY];
 
 function isIncomeCategory(cat) {
   return INCOME_CATEGORIES.includes(cat);
