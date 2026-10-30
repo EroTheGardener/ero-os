@@ -209,7 +209,7 @@ export function periodRange(p, now = new Date()) {
     case "14d": return [ago(14), today];
     case "30d": return [ago(30), today];
     case "90d": return [ago(90), today];
-    case "qtd": return [iso(new Date(Date.UTC(y, Math.floor(m / 3) * 3, 1))), today];
+    case "qtd": return [iso(new Date(y, Math.floor(m / 3) * 3, 1)), today];
     case "ytd": return [`${y}-01-01`, today];
     case "all": return ["0000-01-01", today];
     default: return [iso(new Date(y, m, 1)), today];
@@ -222,7 +222,7 @@ export const monthsIn = ([a, b]) => Math.max(1, (new Date(b) - new Date(a === "0
 // budget wherever a real budget hasn't been set.
 export function categoryAverages(txns, rules, now = new Date()) {
   const months = [];
-  for (let i = 1; i <= 6; i++) months.push(iso(new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1))).slice(0, 7));
+  for (let i = 1; i <= 6; i++) months.push(iso(new Date(now.getFullYear(), now.getMonth() - i, 1)).slice(0, 7));
   const s = summarize(txns, rules, (t) => months.includes(t.ym));
   const out = {};
   for (const c of Object.values(s.byCat)) if (!c.income) out[c.cat] = Math.max(0, c.total / 6);
@@ -236,7 +236,7 @@ export const budgetFor = (cat, budgets, avgs) => (budgets[cat] ? { amount: budge
 // plus your paycheck (every 14 days from the last one) and rent (3-month average, on the 1st).
 export function forecast({ cash, bills, txns, rules, days = 90, now = new Date() }) {
   const pay = txns.filter((t) => categoryOf(t, rules) === "Paycheck" && t.amount > 0).sort((a, b) => b.date.localeCompare(a.date))[0];
-  const months = [1, 2, 3].map((i) => iso(new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1))).slice(0, 7));
+  const months = [1, 2, 3].map((i) => iso(new Date(now.getFullYear(), now.getMonth() - i, 1)).slice(0, 7));
   const rent = summarize(txns, rules, (t) => months.includes(t.ym)).byCat["Rental Income"];
   const rentMonthly = rent ? rent.total / 3 : 0;
   const events = [];
@@ -250,7 +250,7 @@ export function forecast({ cash, bills, txns, rules, days = 90, now = new Date()
     }
   }
   for (let i = 1; i <= Math.ceil(days / 30) + 1; i++) {
-    const d = iso(new Date(Date.UTC(now.getFullYear(), now.getMonth() + i, 1)));
+    const d = iso(new Date(now.getFullYear(), now.getMonth() + i, 1));
     if (rentMonthly && d <= iso(new Date(now.getTime() + days * 864e5))) events.push({ date: d, amt: rentMonthly, label: "Rent (avg)" });
   }
   const pts = [];
