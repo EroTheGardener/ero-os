@@ -3,7 +3,7 @@ import { Card, SectionTitle, PageHeader, Bar, Row, List, Segmented, Button, Shee
 import {
   loadAll, saveMoney, saveBills, fmt, summarize, categoryOf, quarterOf, accountGroup, last4, txnLast4,
   liveDebts, SEED_BILLS, upcoming, addPeriod, loadExtras, saveKey, MANUAL_KEY, SELL_KEY, HISTORY_KEY,
-  PERIODS, periodRange, inRange, monthsIn, categoryAverages, budgetFor, forecast,
+  PERIODS, periodRange, inRange, monthsIn, categoryAverages, budgetFor, forecast, MORTGAGE_ID,
 } from "./store.js";
 import { LineChart, BarChart } from "./charts.jsx";
 import { isIncomeCategory, categorySort, merchantKey, simulate, prettyYM } from "../DebtPayoff.jsx";
@@ -601,11 +601,21 @@ function ScoreSheet({ onSave, onClose }) {
 // Minimum payments come from the Bills tab (statement amounts) when a bill matches the debt.
 const BILL_FOR_DEBT = { "usb-0292": "usb-0292", "usb-0452": "usb-0452", "excite-loan": "excite-loan", "excite-cc": "excite-visa", "chase-amzn": "chase", "wf-reflect": "wf" };
 
-function DebtPlan({ data, updateState }) {
+function DebtPlan({ data, updateState, updateBills }) {
   const { state, balances, bills, manual } = data;
   const debts = liveDebts(state.debts, balances.accounts || [])
     .map((d) => { const b = bills.find((x) => x.id === BILL_FOR_DEBT[d.id]); return b?.amount ? { ...d, minPayment: b.amount } : d; })
-    .filter((d) => d.balance > 0.5);
+    .filter((d) => d.balance > 0.5 && (d.id !== MORTGAGE_ID || state.includeMortgage));
+  const [edit, setEdit] = useState(null);
+  const saveDebt = (d) => {
+    updateState((s) => ({ ...s, debts: s.debts.some((x) => x.id === d.id) ? s.debts.map((x) => (x.id === d.id ? d : x)) : [...s.debts, d] }));
+    // Card minimums live on the Bills tab, so keep the two in step.
+    const billId = BILL_FOR_DEBT[d.id];
+    if (billId) updateBills((list) => list.map((b) => (b.id === billId ? { ...b, amount: d.minPayment } : b)));
+    setEdit(null);
+  };
+  const removeDebt = (d) => { updateState((s) => ({ ...s, debts: s.debts.filter((x) => x.id !== d.id) })); setEdit(null); };
+  const mortgage = state.debts.find((d) => d.id === MORTGAGE_ID);
   const minTotal = Math.round(debts.reduce((s, d) => s + (d.minPayment || 0), 0));
   const [budget, setBudget] = useState(state.budget ? String(state.budget) : "");
   const planAmt = Number(budget) || minTotal;
@@ -625,6 +635,13 @@ function DebtPlan({ data, updateState }) {
   return (
     <>
       <PageHeader title="Debt plan" sub={`${fmt(total)} across ${debts.length} debts · highest rate first`} />
+      <Card className="p-4 flex items-center gap-3">
+        <div className="flex-1">
+          <div className="text-[15px]">Include mortgage</div>
+          <div className="text-[13px] text-[var(--muted)]">{mortgage ? `${fmt(mortgage.balance)} at ${mortgage.apr}% · ${fmt(mortgage.minPayment)}/mo` : ""}</div>
+        </div>
+        <Toggle on={!!state.includeMortgage} onChange={(v) => updateState((s) => ({ ...s, includeMortgage: v }))} />
+      </Card>
 
       <SectionTitle>Where you're headed</SectionTitle>
       <div className="grid grid-cols-2 gap-3">
@@ -659,15 +676,6 @@ function DebtPlan({ data, updateState }) {
         {res.infeasible && <div className="mt-2 text-[15px] text-[var(--red)]">That's below your minimums.</div>}
       </Card>
 
-      <SectionTitle>Pay in this order</SectionTitle>
-      <List>
-        {ordered.map((d, i) => (
-          <Row key={d.id} left={`${i + 1}. ${d.name}`} sub={`${d.apr || 0}% · min ${fmt(d.minPayment || 0)}${d.live ? " · live balance" : ""}`}
-            right={fmt(d.balance)} rightSub={payoff[d.id] ? `paid off ${prettyYM(payoff[d.id])}` : ""} />
-        ))}
-      </List>
-      <div className="text-[13px] text-[var(--muted)] px-1 mt-3">Pay minimums on everything, then every extra dollar goes to #1. When it's gone, roll its payment into #2.</div>
-
       <SectionTitle>Cash flow · next 90 days</SectionTitle>
       <Card className="p-4">
         <div className="flex justify-between text-[15px] mb-2">
@@ -682,7 +690,60 @@ function DebtPlan({ data, updateState }) {
       <List className="mt-3">
         {fc.events.slice(0, 12).map((e, i) => <Row key={i} left={e.label} sub={niceDate(e.date)} right={<span className={e.amt > 0 ? "text-[var(--green)]" : ""}>{e.amt > 0 ? "+" : ""}{fmt(e.amt)}</span>} />)}
       </List>
+      <SectionTitle right={<button onClick={() => setEdit({ id: `d${Date.now()}`, name: "", balance: "", apr: "", minPayment: "", _new: true })} className="text-[var(--accent)] text-[14px] normal-case tracking-normal font-medium">Add debt</button>}>Pay in this order</SectionTitle>
+      <List>
+        {ordered.map((d, i) => (
+          <Row key={d.id} left={`${i + 1}. ${d.name}`} sub={`${d.apr || 0}% · min ${fmt(d.minPayment || 0)}${d.live ? " · live balance" : ""}`}
+            right={fmt(d.balance)} rightSub={payoff[d.id] ? `paid off ${prettyYM(payoff[d.id])}` : ""} onClick={() => setEdit(state.debts.find((x) => x.id === d.id) ? { ...state.debts.find((x) => x.id === d.id), minPayment: d.minPayment, liveBalance: d.live ? d.balance : null } : d)} />
+        ))}
+      </List>
+      <div className="text-[13px] text-[var(--muted)] px-1 mt-3">Pay minimums on everything, then every extra dollar goes to #1. When it's gone, roll its payment into #2. Tap a debt to edit it.</div>
+      {edit && <DebtSheet debt={edit} onSave={saveDebt} onDelete={removeDebt} onClose={() => setEdit(null)} />}
     </>
+  );
+}
+
+function Toggle({ on, onChange }) {
+  return (
+    <button onClick={() => onChange(!on)} aria-pressed={on}
+      className={`relative w-[51px] h-[31px] rounded-full transition shrink-0 ${on ? "bg-[var(--green)]" : "bg-[var(--fill)]"}`}>
+      <span className={`absolute top-[2px] w-[27px] h-[27px] rounded-full bg-white shadow transition-all ${on ? "left-[22px]" : "left-[2px]"}`} />
+    </button>
+  );
+}
+
+function DebtSheet({ debt, onSave, onDelete, onClose }) {
+  const [d, setD] = useState({ ...debt });
+  const set = (k, v) => setD((x) => ({ ...x, [k]: v }));
+  const live = debt.liveBalance != null;
+  const num = (v) => (v === "" || v == null ? "" : v);
+  const save = () => {
+    const { liveBalance, _new, ...rest } = d;
+    onSave({ ...rest, balance: Number(d.balance) || 0, apr: Number(d.apr) || 0, minPayment: Number(d.minPayment) || 0 });
+  };
+  const field = (label, k, extra = {}) => (
+    <label className="flex items-center gap-3">
+      <span className="flex-1 text-[15px]">{label}</span>
+      <input className={`${input} text-right`} style={{ width: 140 }} inputMode="decimal" value={num(d[k])} onChange={(e) => set(k, e.target.value)} {...extra} />
+    </label>
+  );
+  return (
+    <Sheet title={debt._new ? "New debt" : "Edit debt"} onClose={onClose}>
+      <div className="space-y-3">
+        <input className={input} placeholder="Name" value={d.name} onChange={(e) => set("name", e.target.value)} />
+        {live
+          ? <div className="flex items-center gap-3"><span className="flex-1 text-[15px]">Balance</span><span className="tabular-nums">{fmt(debt.liveBalance, true)}</span></div>
+          : field("Balance", "balance")}
+        {live && <div className="text-[13px] text-[var(--muted)] -mt-1">Synced from your bank every morning.</div>}
+        {field("Interest rate (APR %)", "apr")}
+        {field("Monthly minimum", "minPayment")}
+        <input className={input} placeholder="Note" value={d.note || ""} onChange={(e) => set("note", e.target.value)} />
+        <div className="flex justify-between pt-2">
+          {!debt._new ? <Button kind="danger" onClick={() => onDelete(d)}>Delete</Button> : <span />}
+          <Button kind="primary" disabled={!d.name} onClick={save}>Save</Button>
+        </div>
+      </div>
+    </Sheet>
   );
 }
 

@@ -22,12 +22,21 @@ async function getJSON(key) {
   }
 }
 
+// The mortgage lives with the other debts but is only counted in the Debt plan when toggled on.
+// Starting numbers are from the Fuel Units sheet (last entry ~$385k at 7.448%, $2,693 principal + interest;
+// the $2,997 bill also includes escrow). Editable in the app.
+export const MORTGAGE_ID = "mortgage";
+function withMortgage(debts) {
+  if (debts.some((d) => d.id === MORTGAGE_ID)) return debts;
+  return [...debts, { id: MORTGAGE_ID, name: "Mortgage (AmeriHome)", balance: 385014, apr: 7.448, minPayment: 2693, note: "Principal + interest only. Escrow is extra." }];
+}
+
 export async function loadAll() {
   const [money, balances, bills] = await Promise.all([getJSON(LS_KEY), getJSON(BAL_KEY), getJSON(BILLS_KEY)]);
   const raw = money || {};
   const state = {
     ...raw,
-    debts: applyDebtCorrections(raw.debts || SEED_DEBTS),
+    debts: withMortgage(applyDebtCorrections(raw.debts || SEED_DEBTS)),
     rules: mergeAppendedRules(raw.rules || SEED_RULES),
     budgets: renameBudgets({ "Property Projects": 1000, ...(raw.budgets || {}) }),
     categories: normalizeSavedCategories(raw.categories || []),
