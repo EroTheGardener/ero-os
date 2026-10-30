@@ -246,6 +246,75 @@ const APPEND_RULES = [
   { keyword: "homedepot.com", category: "Property Projects" },
   { keyword: "veterinary", category: "Pets" },
   { keyword: "dentistry", category: "Health" },
+  // --- Oct 30 2026 cleanup of uncategorized rows ---
+  // Moves between your own accounts, card/loan payments, cash pulled to Cash on hand
+  { keyword: "banking transfer withdrawal", category: "Transfers & Payments" },
+  { keyword: "external transfer withdrawal", category: "Transfers & Payments" },
+  { keyword: "sofi bank", category: "Transfers & Payments" },
+  { keyword: "u.s. bank", category: "Transfers & Payments" },
+  { keyword: "wells fargo card", category: "Transfers & Payments" },
+  { keyword: "payment to eric", category: "Transfers & Payments" },
+  { keyword: "eric gorski", category: "Transfers & Payments" },
+  { keyword: "new loan disbursement", category: "Transfers & Payments" },
+  { keyword: "atm withdrawal", category: "Transfers & Payments" },
+  { keyword: "customer withdrawal", category: "Transfers & Payments" },
+  // Amazon card charges (Prime stays Subscriptions - matched above)
+  { keyword: "prime video", category: "Subscriptions" },
+  { keyword: "amazon mktpl", category: "Shopping" },
+  { keyword: "amazon.com", category: "Shopping" },
+  { keyword: "amazon reta", category: "Shopping" },
+  { keyword: "amazon marketplace", category: "Shopping" },
+  { keyword: "target.com", category: "Shopping" },
+  { keyword: "etsy.com", category: "Shopping" },
+  { keyword: "truckee variety", category: "Shopping" },
+  { keyword: "warmtech", category: "Shopping" },
+  // Pets
+  { keyword: "petco", category: "Pets" },
+  { keyword: "incredible pets", category: "Pets" },
+  // Groceries
+  { keyword: "azurestandard", category: "Groceries" },
+  { keyword: "staff of life", category: "Groceries" },
+  { keyword: "wild roots market", category: "Groceries" },
+  { keyword: "wholefds", category: "Groceries" },
+  { keyword: "marianos", category: "Groceries" },
+  { keyword: "prairie food co-op", category: "Groceries" },
+  { keyword: "rainbow market", category: "Groceries" },
+  { keyword: "food bin", category: "Groceries" },
+  // Dining
+  { keyword: "thai cuisine", category: "Dining" },
+  { keyword: "pizzeria", category: "Dining" },
+  { keyword: "fudenjuce", category: "Dining" },
+  { keyword: "elixart", category: "Dining" },
+  // Fuel
+  { keyword: "feather falls mini mar", category: "Fuel & Propane" },
+  { keyword: "truck stop", category: "Fuel & Propane" },
+  { keyword: "pilot_", category: "Fuel & Propane" },
+  { keyword: "conoco", category: "Fuel & Propane" },
+  { keyword: "sunoco", category: "Fuel & Propane" },
+  { keyword: "7-eleven", category: "Fuel & Propane" },
+  { keyword: "hunt propane", category: "Fuel & Propane" },
+  // Travel
+  { keyword: "southwes", category: "Travel" },
+  { keyword: "american 00", category: "Travel" },
+  { keyword: "aa inflight", category: "Travel" },
+  { keyword: "airport par", category: "Travel" },
+  // Vehicle, tractor, equipment
+  { keyword: "anton's import auto", category: "Vehicle & Equipment" },
+  { keyword: "foster and son hose", category: "Vehicle & Equipment" },
+  { keyword: "montway auto", category: "Vehicle & Equipment" },
+  { keyword: "rb auctioneers", category: "Vehicle & Equipment" },
+  { keyword: "steiner tractor", category: "Tractor" },
+  { keyword: "dr power", category: "Tractor" },
+  // Health
+  { keyword: "star heart holistic", category: "Health" },
+  { keyword: "cvs/pharmacy", category: "Health" },
+  { keyword: "biobreath", category: "Health" },
+  // Fees, government, insurance
+  { keyword: "late fee", category: "Finance: Fees" },
+  { keyword: "annual membership fee", category: "Finance: Fees" },
+  { keyword: "secretary of state", category: "Government & Fees" },
+  { keyword: "city of grand junction", category: "Government & Fees" },
+  { keyword: "aaa insurance", category: "Insurance" },
 ];
 
 // One-time corrections to saved debts, applied on load. Each only fires while
@@ -561,6 +630,10 @@ function positiveTransferCategory(desc) {
     "mobile banking transfer deposit",
     "electronic deposit sofi bank",
     "monthly maintenance fee waived",
+    // Money landing in SoFi from your US Bank, and payments posting on the Excite loan
+    "us bank na",
+    "external loan payment",
+    "regular payment",
   ];
   return transferHints.some((x) => d.includes(x)) ? TRANSFER_CATEGORY : null;
 }
