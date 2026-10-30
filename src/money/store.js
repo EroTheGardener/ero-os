@@ -5,7 +5,7 @@
 //   eroOS.bills.v1        upcoming bills (new)
 import {
   LS_KEY, SEED_DEBTS, SEED_RULES, normalizeSavedTxns, mergeAppendedRules,
-  normalizeSavedCategories, applyDebtCorrections, displayCategoryForTxn,
+  normalizeSavedCategories, applyDebtCorrections, displayCategoryForTxn, renameCategory,
   isIncomeCategory, isTransferCategory,
 } from "../DebtPayoff.jsx";
 
@@ -29,7 +29,7 @@ export async function loadAll() {
     ...raw,
     debts: applyDebtCorrections(raw.debts || SEED_DEBTS),
     rules: mergeAppendedRules(raw.rules || SEED_RULES),
-    budgets: { "Property Projects": 1000, ...(raw.budgets || {}) },
+    budgets: renameBudgets({ "Property Projects": 1000, ...(raw.budgets || {}) }),
     categories: normalizeSavedCategories(raw.categories || []),
     txns: normalizeSavedTxns(raw.txns || []),
   };
@@ -50,6 +50,16 @@ export const fmt = (n, cents = false) => {
   const s = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
   return (v < 0 ? "-$" : "$") + s;
 };
+
+// Old category names fold into the new ones; if two merge, keep the bigger budget.
+function renameBudgets(b) {
+  const out = {};
+  for (const [k, v] of Object.entries(b || {})) {
+    const nk = renameCategory(k);
+    out[nk] = Math.max(out[nk] || 0, Number(v) || 0);
+  }
+  return out;
+}
 
 export function categoryOf(t, rules) {
   return displayCategoryForTxn(t, rules);

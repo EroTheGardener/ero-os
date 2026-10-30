@@ -258,12 +258,12 @@ const APPEND_RULES = [
   { keyword: "new loan disbursement", category: "Transfers & Payments" },
   { keyword: "atm withdrawal", category: "Transfers & Payments" },
   { keyword: "customer withdrawal", category: "Transfers & Payments" },
-  // Amazon card charges (Prime stays Subscriptions - matched above)
+  // Amazon gets its own category until order history is matched (Prime stays Subscriptions)
   { keyword: "prime video", category: "Subscriptions" },
-  { keyword: "amazon mktpl", category: "Shopping" },
-  { keyword: "amazon.com", category: "Shopping" },
-  { keyword: "amazon reta", category: "Shopping" },
-  { keyword: "amazon marketplace", category: "Shopping" },
+  { keyword: "amazon mktpl", category: "Amazon" },
+  { keyword: "amazon.com", category: "Amazon" },
+  { keyword: "amazon reta", category: "Amazon" },
+  { keyword: "amazon marketplace", category: "Amazon" },
   { keyword: "target.com", category: "Shopping" },
   { keyword: "etsy.com", category: "Shopping" },
   { keyword: "truckee variety", category: "Shopping" },
@@ -299,12 +299,12 @@ const APPEND_RULES = [
   { keyword: "aa inflight", category: "Travel" },
   { keyword: "airport par", category: "Travel" },
   // Vehicle, tractor, equipment
-  { keyword: "anton's import auto", category: "Vehicle & Equipment" },
-  { keyword: "foster and son hose", category: "Vehicle & Equipment" },
-  { keyword: "montway auto", category: "Vehicle & Equipment" },
-  { keyword: "rb auctioneers", category: "Vehicle & Equipment" },
-  { keyword: "steiner tractor", category: "Tractor" },
-  { keyword: "dr power", category: "Tractor" },
+  { keyword: "anton's import auto", category: "Vehicles" },
+  { keyword: "foster and son hose", category: "Heavy Equipment" },
+  { keyword: "montway auto", category: "Vehicles" },
+  { keyword: "rb auctioneers", category: "Heavy Equipment" },
+  { keyword: "steiner tractor", category: "Heavy Equipment" },
+  { keyword: "dr power", category: "Property Equipment" },
   // Health
   { keyword: "star heart holistic", category: "Health" },
   { keyword: "cvs/pharmacy", category: "Health" },
@@ -315,6 +315,12 @@ const APPEND_RULES = [
   { keyword: "secretary of state", category: "Government & Fees" },
   { keyword: "city of grand junction", category: "Government & Fees" },
   { keyword: "aaa insurance", category: "Insurance" },
+  // --- Oct 30 2026 round 2 ---
+  { keyword: "payment to iris", category: "Rental Income" }, // deposit refund nets against rent
+  { keyword: "to melody", category: "Gifts" },
+  { keyword: "payment to will beuchat", category: "Property Buildings" },
+  { keyword: "vagaro", category: "Health" }, // haircuts
+  { keyword: "carson valley swim", category: "Gifts" },
 ];
 
 // One-time corrections to saved debts, applied on load. Each only fires while
@@ -332,6 +338,32 @@ function applyDebtCorrections(debts = []) {
 }
 
 // Building suppliers whose purchases are rental build-out, not household upkeep.
+// Category consolidation (Oct 30 2026). Old names fold into the new ones everywhere:
+// saved rules, hand-set transaction categories, budgets and the category list.
+const CATEGORY_RENAMES = {
+  "Property Projects": "Property Buildings",
+  "Property & Home": "Property Buildings",
+  "Vehicle & Equipment": "Vehicles",
+  "Tractor": "Heavy Equipment",
+  "Gift": "Gifts",
+};
+const renameCategory = (c) => CATEGORY_RENAMES[c] || c;
+// Merchants that land somewhere more specific than a straight rename.
+const KEYWORD_CATEGORY_OVERRIDES = {
+  "hansen bros": "Property Infrastructure",
+  "recology": "Property Infrastructure",
+  "wm_mccourtney": "Property Infrastructure",
+  "vevor": "Property Equipment",
+  "dr power": "Property Equipment",
+  "rb auctioneers": "Heavy Equipment",
+  "foster and son hose": "Heavy Equipment",
+  "amazon mktpl": "Amazon",
+  "amazon.com": "Amazon",
+  "amazon reta": "Amazon",
+  "amazon marketplace": "Amazon",
+};
+const AMAZON_RE = /amazon mktpl|amazon\.com|amazon reta|amazon marketplace|amzn/i;
+
 const PROJECT_SUPPLIERS = ["home depot", "lowes", "b & c home", "hansen bros", "hills flat", "homedepot.com"];
 
 // Saved rules that used to file GNWS payroll as Business Income. Swapped in place
@@ -351,13 +383,20 @@ function migrateSavedRules(existing = []) {
       out.push({ ...r, category: "Transfers & Payments" });
     } else out.push(r);
   }
-  return out;
+  return out.map((r) => {
+    const k = String(r.keyword || "").toLowerCase();
+    const cat = renameCategory(r.category);
+    const over = KEYWORD_CATEGORY_OVERRIDES[k];
+    // Only override auto-assigned buckets, never a category you picked for a merchant yourself.
+    const autoCats = ["Shopping", "Property Buildings", "Vehicles", "Heavy Equipment"];
+    return { ...r, category: over && autoCats.includes(cat) ? over : cat };
+  });
 }
 
 function mergeAppendedRules(existing = []) {
   const out = migrateSavedRules(existing);
   const seen = new Set(out.map((r) => `${String(r.keyword || "").toLowerCase()}|${String(r.category || "").toLowerCase()}`));
-  for (const r of APPEND_RULES) {
+  for (const r of migrateSavedRules(APPEND_RULES)) {
     const k = `${r.keyword.toLowerCase()}|${r.category.toLowerCase()}`;
     if (!seen.has(k)) out.push(r);
   }
@@ -365,11 +404,11 @@ function mergeAppendedRules(existing = []) {
 }
 
 function normalizeSavedCategories(existing = []) {
-  return Array.from(new Set([...(existing || []), ...DEFAULT_CATEGORIES])).sort(categorySort);
+  return Array.from(new Set([...(existing || []).map(renameCategory), ...DEFAULT_CATEGORIES])).sort(categorySort);
 }
 
 const MOONLIGHT_RE = /matt sconzo|matthew sommer/i;
-const TRACTOR_CATEGORY = "Tractor";
+const TRACTOR_CATEGORY = "Heavy Equipment";
 // Matt's Venmos that were tractor / mower work, not the van.
 const TRACTOR_NOTE_RE = /matt sconzo: (tractor|ignition disassembly)/i;
 const SPLIT_NOTE_RE = /matt sconzo: tractors and van/i; // half tractor, half Moonlight
@@ -389,6 +428,8 @@ function normalizeSavedTxns(existing = []) {
     if (TRACTOR_NOTE_RE.test(t.desc || "") && !t.splitOf) t = { ...t, category: TRACTOR_CATEGORY };
     // Van work hand-tagged as Vehicle & Equipment before Moonlight had its own category.
     else if (t.category === "Vehicle & Equipment" && MOONLIGHT_RE.test(t.desc || "")) t = { ...t, category: "Moonlight (van)" };
+    if (t.category && CATEGORY_RENAMES[t.category]) t = { ...t, category: renameCategory(t.category) };
+    if (t.category === "Shopping" && AMAZON_RE.test(t.desc || "")) t = { ...t, category: "Amazon" };
     if (t.date && /^\d{4}-\d{2}-\d{2}$/.test(t.date)) return t;
     const first = String(t.key || "").split("|")[0];
     if (/^\d{4}-\d{2}-\d{2}$/.test(first)) return { ...t, date: first, ym: first.slice(0, 7) };
@@ -580,8 +621,8 @@ const TRANSFER_CATEGORY = "Transfers & Payments";
 // purpose, so it never belongs in this default set even if a saved list omits it.
 const INCOME_CATEGORIES = [INCOME_CATEGORY, "Paycheck", "Rental Income", "Side Hustle", "Personal Sales"];
 // Property Projects = build-out spending meant to come back as rental income.
-const PROJECTS_CATEGORY = "Property Projects";
-const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, "Moonlight (van)", "Tractor", TRANSFER_CATEGORY];
+const PROJECTS_CATEGORY = "Property Buildings";
+const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, "Property Infrastructure", "Property Equipment", "Heavy Equipment", "Vehicles", "Moonlight (van)", "Amazon", "Gifts", TRANSFER_CATEGORY];
 
 function isIncomeCategory(cat) {
   return INCOME_CATEGORIES.includes(cat);
@@ -640,7 +681,7 @@ function positiveTransferCategory(desc) {
 
 function displayCategoryForTxn(txn, rules) {
   // Manual one-time categories always win.
-  if (txn.category && txn.category !== "Uncategorized") return txn.category;
+  if (txn.category && txn.category !== "Uncategorized") return renameCategory(txn.category);
 
   // Positive transactions default to Income unless they are clear account/payment movements.
   // Positive-specific rules can split Income into Rental Income, Business Income, Personal Sales, etc.
@@ -650,12 +691,12 @@ function displayCategoryForTxn(txn, rules) {
     if (transferCat) return transferCat;
 
     const ruleCat = categorize(txn.desc || "", rules);
-    if (ruleCat && ruleCat !== "Uncategorized" && ruleCat !== TRANSFER_CATEGORY) return ruleCat;
+    if (ruleCat && ruleCat !== "Uncategorized" && ruleCat !== TRANSFER_CATEGORY) return renameCategory(ruleCat);
 
     return INCOME_CATEGORY;
   }
 
-  return categoryForTxn(txn, rules);
+  return renameCategory(categoryForTxn(txn, rules));
 }
 
 function categorySort(a, b) {
@@ -1054,7 +1095,7 @@ export default function DebtPayoff() {
         setBudget(saved.budget ?? 1600);
         setEvents(saved.events || []);
         setRules(mergeAppendedRules(saved.rules || SEED_RULES));
-        setBudgets({ "Property Projects": 1000, ...(saved.budgets || {}) });
+        setBudgets({ "Property Buildings": 1000, ...(saved.budgets || {}) });
         setCategories(normalizeSavedCategories(saved.categories || []));
         setTxns(normalizeSavedTxns(saved.txns || []));
         setSnapshots(saved.Snapshots || []);
@@ -2896,6 +2937,6 @@ function TrendChart({ Snapshots }) {
 export {
   LS_KEY, SEED_DEBTS, SEED_RULES, INCOME_CATEGORIES, TRANSFER_CATEGORY, DEFAULT_CATEGORIES,
   normalizeSavedTxns, mergeAppendedRules, normalizeSavedCategories, applyDebtCorrections,
-  displayCategoryForTxn, isIncomeCategory, isTransferCategory, categorySort, merchantKey,
+  displayCategoryForTxn, renameCategory, isIncomeCategory, isTransferCategory, categorySort, merchantKey,
   simulate, addMonths, prettyYM, monthKeyOf,
 };
