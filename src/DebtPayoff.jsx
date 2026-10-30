@@ -300,10 +300,10 @@ const APPEND_RULES = [
   { keyword: "airport par", category: "Travel" },
   // Vehicle, tractor, equipment
   { keyword: "anton's import auto", category: "Vehicles" },
-  { keyword: "foster and son hose", category: "Heavy Equipment" },
+  { keyword: "foster and son hose", category: "Tractor" },
   { keyword: "montway auto", category: "Vehicles" },
-  { keyword: "rb auctioneers", category: "Heavy Equipment" },
-  { keyword: "steiner tractor", category: "Heavy Equipment" },
+  { keyword: "rb auctioneers", category: "Property Equipment" },
+  { keyword: "steiner tractor", category: "Tractor" },
   { keyword: "dr power", category: "Property Equipment" },
   // Health
   { keyword: "star heart holistic", category: "Health" },
@@ -344,7 +344,9 @@ const CATEGORY_RENAMES = {
   "Property Projects": "Property Buildings",
   "Property & Home": "Property Buildings",
   "Vehicle & Equipment": "Vehicles",
-  "Tractor": "Heavy Equipment",
+  // Heavy Equipment was briefly its own category - it is Property Equipment now.
+  // Tractor stays separate: Felicia owns it, so track what goes into it.
+  "Heavy Equipment": "Property Equipment",
   "Gift": "Gifts",
 };
 const renameCategory = (c) => CATEGORY_RENAMES[c] || c;
@@ -355,8 +357,9 @@ const KEYWORD_CATEGORY_OVERRIDES = {
   "wm_mccourtney": "Property Infrastructure",
   "vevor": "Property Equipment",
   "dr power": "Property Equipment",
-  "rb auctioneers": "Heavy Equipment",
-  "foster and son hose": "Heavy Equipment",
+  "rb auctioneers": "Property Equipment",
+  "foster and son hose": "Tractor",
+  "steiner tractor": "Tractor",
   "amazon mktpl": "Amazon",
   "amazon.com": "Amazon",
   "amazon reta": "Amazon",
@@ -388,7 +391,7 @@ function migrateSavedRules(existing = []) {
     const cat = renameCategory(r.category);
     const over = KEYWORD_CATEGORY_OVERRIDES[k];
     // Only override auto-assigned buckets, never a category you picked for a merchant yourself.
-    const autoCats = ["Shopping", "Property Buildings", "Vehicles", "Heavy Equipment"];
+    const autoCats = ["Shopping", "Property Buildings", "Vehicles", "Property Equipment", "Heavy Equipment"];
     return { ...r, category: over && autoCats.includes(cat) ? over : cat };
   });
 }
@@ -408,7 +411,7 @@ function normalizeSavedCategories(existing = []) {
 }
 
 const MOONLIGHT_RE = /matt sconzo|matthew sommer/i;
-const TRACTOR_CATEGORY = "Heavy Equipment";
+const TRACTOR_CATEGORY = "Tractor";
 // Matt's Venmos that were tractor / mower work, not the van.
 const TRACTOR_NOTE_RE = /matt sconzo: (tractor|ignition disassembly)/i;
 const SPLIT_NOTE_RE = /matt sconzo: tractors and van/i; // half tractor, half Moonlight
@@ -428,6 +431,7 @@ function normalizeSavedTxns(existing = []) {
     if (TRACTOR_NOTE_RE.test(t.desc || "") && !t.splitOf) t = { ...t, category: TRACTOR_CATEGORY };
     // Van work hand-tagged as Vehicle & Equipment before Moonlight had its own category.
     else if (t.category === "Vehicle & Equipment" && MOONLIGHT_RE.test(t.desc || "")) t = { ...t, category: "Moonlight (van)" };
+    if (t.category === "Heavy Equipment" && (String(t.key || "").endsWith("#tractor") || /tractor|steiner|foster and son/i.test(t.desc || ""))) t = { ...t, category: TRACTOR_CATEGORY };
     if (t.category && CATEGORY_RENAMES[t.category]) t = { ...t, category: renameCategory(t.category) };
     if (t.category === "Shopping" && AMAZON_RE.test(t.desc || "")) t = { ...t, category: "Amazon" };
     if (t.date && /^\d{4}-\d{2}-\d{2}$/.test(t.date)) return t;
@@ -622,7 +626,7 @@ const TRANSFER_CATEGORY = "Transfers & Payments";
 const INCOME_CATEGORIES = [INCOME_CATEGORY, "Paycheck", "Rental Income", "Side Hustle", "Personal Sales"];
 // Property Projects = build-out spending meant to come back as rental income.
 const PROJECTS_CATEGORY = "Property Buildings";
-const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, "Property Infrastructure", "Property Equipment", "Heavy Equipment", "Vehicles", "Moonlight (van)", "Amazon", "Gifts", TRANSFER_CATEGORY];
+const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, "Property Infrastructure", "Property Equipment", "Tractor", "Vehicles", "Moonlight (van)", "Amazon", "Gifts", TRANSFER_CATEGORY];
 
 function isIncomeCategory(cat) {
   return INCOME_CATEGORIES.includes(cat);
