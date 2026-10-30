@@ -78,7 +78,7 @@ export function Button({ children, onClick, kind = "plain", disabled, className 
     : kind === "danger" ? "text-[var(--red)] bg-[var(--fill)]" : "bg-[var(--fill)] text-[var(--text)]";
   return (
     <button disabled={disabled} onClick={onClick}
-      className={`px-3.5 py-1.5 rounded-full text-[14px] font-medium transition active:scale-95 disabled:opacity-50 ${k} ${className}`}>
+      className={`px-3.5 py-1.5 rounded-full text-[14px] font-medium whitespace-nowrap shrink-0 transition active:scale-95 disabled:opacity-50 ${k} ${className}`}>
       {children}
     </button>
   );

@@ -167,6 +167,8 @@ export const SEED_BILLS = [
 export function addPeriod(date, repeat) {
   const d = new Date(date + "T12:00:00");
   if (repeat === "monthly") d.setMonth(d.getMonth() + 1);
+  else if (repeat === "biweekly") d.setDate(d.getDate() + 14);
+  else if (repeat === "weekly") d.setDate(d.getDate() + 7);
   else if (repeat === "yearly") d.setFullYear(d.getFullYear() + 1);
   return d.toISOString().slice(0, 10);
 }
@@ -194,11 +196,12 @@ export function upcoming(bills, days = 45, today = new Date()) {
 
 export const MANUAL_KEY = "eroOS.manual.v1"; // { cashOnHand, cashUpdatedAt }
 export const SELL_KEY = "eroOS.sell.v1"; // [{ id, name, price, status, soldFor, soldOn, note }]
+export const INCOME_KEY = "eroOS.income.v1"; // [{ id, name, amount, due, repeat, note, paid }] - same shape as bills
 export const HISTORY_KEY = "eroOS.history.v1"; // { points: [{ date, net, score, experian, transunion, equifax }] }
 
 export async function loadExtras() {
-  const [manual, sell, history] = await Promise.all([getJSON(MANUAL_KEY), getJSON(SELL_KEY), getJSON(HISTORY_KEY)]);
-  return { manual: manual || { cashOnHand: 0 }, sell: sell || [], history: history || { points: [] } };
+  const [manual, history, income] = await Promise.all([getJSON(MANUAL_KEY), getJSON(HISTORY_KEY), getJSON(INCOME_KEY)]);
+  return { manual: manual || { cashOnHand: 0 }, history: history || { points: [] }, income };
 }
 export const saveKey = (key, obj) => window.storage.set(key, JSON.stringify(obj));
 
@@ -253,14 +256,41 @@ export const budgetFor = (cat, budgets, avgs) => (budgets[cat] ? { amount: budge
 
 // Day-by-day projected cash for the next `days`: today's cash, minus bills,
 // plus your paycheck (every 14 days from the last one) and rent (3-month average, on the 1st).
-export function forecast({ cash, bills, txns, rules, days = 90, now = new Date() }) {
+// First-time Income list, built from what's actually been coming in: the paycheck every
+// two weeks from the last one, and each tenant's latest rent on the day they usually pay.
+const TENANTS = ["dana mayfield", "iris bocianowski", "sade marie williams", "william beluchat", "jacob gorski", "isabel spiegel"];
+const titleCase = (s) => s.replace(/\b\w/g, (c) => c.toUpperCase());
+export function seedIncome(txns, rules, now = new Date()) {
+  const today = iso(now);
+  const out = [];
+  const pay = txns.filter((t) => categoryOf(t, rules) === "Paycheck" && t.amount > 0).sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (pay) {
+    let due = pay.date;
+    for (let i = 0; i < 60 && due < today; i++) due = addPeriod(due, "biweekly");
+    out.push({ id: "paycheck", name: "Paycheck (GNWS)", amount: Math.round(pay.amount), due, repeat: "biweekly", note: "" });
+  }
+  const since = iso(new Date(now.getFullYear(), now.getMonth() - 3, 1));
+  for (const k of TENANTS) {
+    const last = txns.filter((t) => t.amount > 0 && t.date >= since && String(t.desc || "").toLowerCase().includes(k)).sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!last) continue;
+    let due = last.date;
+    for (let i = 0; i < 24 && due < today; i++) due = addPeriod(due, "monthly");
+    out.push({ id: `rent-${k.split(" ")[0]}`, name: `Rent - ${titleCase(k.split(" ")[0])}`, amount: Math.round(last.amount), due, repeat: "monthly", note: "" });
+  }
+  return out;
+}
+
+export function forecast({ cash, bills, income, txns, rules, days = 90, now = new Date() }) {
   const pay = txns.filter((t) => categoryOf(t, rules) === "Paycheck" && t.amount > 0).sort((a, b) => b.date.localeCompare(a.date))[0];
   const months = [1, 2, 3].map((i) => iso(new Date(now.getFullYear(), now.getMonth() - i, 1)).slice(0, 7));
   const rent = summarize(txns, rules, (t) => months.includes(t.ym)).byCat["Rental Income"];
   const rentMonthly = rent ? rent.total / 3 : 0;
   const events = [];
   for (const b of upcoming(bills, days, now)) if (b.amount) events.push({ date: b.due, amt: -b.amount, label: b.name });
-  if (pay) {
+  // With an Income list, it is the source of truth; otherwise estimate paycheck + rent.
+  if (income) {
+    for (const b of upcoming(income, days, now)) if (b.amount) events.push({ date: b.due, amt: b.amount, label: b.name });
+  } else if (pay) {
     let d = new Date(pay.date + "T12:00:00");
     for (let i = 0; i < 12; i++) {
       d = new Date(d.getTime() + 14 * 864e5);
@@ -268,7 +298,7 @@ export function forecast({ cash, bills, txns, rules, days = 90, now = new Date()
       if (iso(d) >= iso(now)) events.push({ date: iso(d), amt: pay.amount, label: "Paycheck" });
     }
   }
-  for (let i = 1; i <= Math.ceil(days / 30) + 1; i++) {
+  if (!income) for (let i = 1; i <= Math.ceil(days / 30) + 1; i++) {
     const d = iso(new Date(now.getFullYear(), now.getMonth() + i, 1));
     if (rentMonthly && d <= iso(new Date(now.getTime() + days * 864e5))) events.push({ date: d, amt: rentMonthly, label: "Rent (avg)" });
   }

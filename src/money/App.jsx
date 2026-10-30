@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Card, SectionTitle, PageHeader, Bar, Row, List, Segmented, Button, Sheet, input } from "./ui.jsx";
 import {
   loadAll, saveMoney, saveBills, fmt, summarize, categoryOf, quarterOf, accountGroup, last4, txnLast4,
-  liveDebts, SEED_BILLS, upcoming, addPeriod, loadExtras, saveKey, MANUAL_KEY, SELL_KEY, HISTORY_KEY,
+  liveDebts, SEED_BILLS, upcoming, addPeriod, loadExtras, saveKey, MANUAL_KEY, INCOME_KEY, HISTORY_KEY, seedIncome,
   PERIODS, periodRange, inRange, monthsIn, categoryAverages, budgetFor, forecast, MORTGAGE_ID,
 } from "./store.js";
 import { LineChart, BarChart } from "./charts.jsx";
@@ -13,9 +13,9 @@ const TABS = [
   ["accounts", "Accounts", "M3 9h18M5 9v9m4.5-9v9m5-9v9M19 9v9M2 20h20M12 3l9 5H3z"],
   ["spending", "Spending", "M12 3v18m5-14H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"],
   ["bills", "Bills", "M8 2v4m8-4v4M3 9h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"],
+  ["income", "Income", "M12 19V5m0 0-6 6m6-6 6 6M4 21h16"],
   ["reports", "Reports", "M4 20V10m6 10V4m6 16v-7m4 7H2"],
   ["debt", "Debt plan", "M3 17l6-6 4 4 8-8m0 0v6m0-6h-6"],
-  ["sell", "Sell stuff", "M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01"],
 ];
 
 const Icon = ({ d, className = "w-5 h-5" }) => (
@@ -37,7 +37,7 @@ export default function App() {
   const [toast, setToast] = useState("");
 
   useEffect(() => {
-    Promise.all([loadAll(), loadExtras()]).then(([d, x]) => setData({ ...d, ...x, bills: d.bills || SEED_BILLS }));
+    Promise.all([loadAll(), loadExtras()]).then(([d, x]) => setData({ ...d, ...x, bills: d.bills || SEED_BILLS, income: x.income || seedIncome(d.state.txns, d.state.rules) }));
   }, []);
   useEffect(() => { try { localStorage.setItem("money.tab", tab); } catch { /* private mode */ } }, [tab]);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(""), 3500); return () => clearTimeout(t); } }, [toast]);
@@ -46,7 +46,7 @@ export default function App() {
   const updateBills = (fn) => setData((d) => { const bills = fn(d.bills); saveBills(bills); return { ...d, bills }; });
   const updateExtra = (field, key) => (fn) => setData((d) => { const v = fn(d[field]); saveKey(key, v); return { ...d, [field]: v }; });
   const updateManual = updateExtra("manual", MANUAL_KEY);
-  const updateSell = updateExtra("sell", SELL_KEY);
+  const updateIncome = updateExtra("income", INCOME_KEY);
   const updateHistory = updateExtra("history", HISTORY_KEY);
 
   const sync = async () => {
@@ -66,8 +66,8 @@ export default function App() {
 
   if (!data) return <div className="min-h-screen grid place-items-center text-[var(--muted)]">Loading…</div>;
 
-  const props = { data, updateState, updateBills, updateManual, updateSell, updateHistory, setTab, sync, syncing };
-  const Page = { home: Home, accounts: Accounts, spending: Spending, bills: Bills, reports: Reports, debt: DebtPlan, sell: Sell }[tab] || Home;
+  const props = { data, updateState, updateBills, updateManual, updateIncome, updateHistory, setTab, sync, syncing };
+  const Page = { home: Home, accounts: Accounts, spending: Spending, bills: Bills, reports: Reports, debt: DebtPlan, income: Income }[tab] || Home;
 
   return (
     <div className="min-h-screen md:flex">
@@ -441,55 +441,68 @@ function CategorySheet({ cat, filter, label, avg, state, updateState, onClose, r
 
 /* ================= BILLS ================= */
 
-const REPEATS = [["once", "Once"], ["monthly", "Monthly"], ["yearly", "Yearly"]];
+const REPEATS = [["once", "Once"], ["weekly", "Weekly"], ["biweekly", "2 wks"], ["monthly", "Monthly"], ["yearly", "Yearly"]];
 
 function Bills({ data, updateBills }) {
-  const { bills } = data;
-  const [edit, setEdit] = useState(null);
-  const soon = upcoming(bills, 60);
-  const later = bills.filter((b) => !(b.paid && b.repeat === "once") && !soon.some((s) => s.id === b.id)).sort((a, b) => (a.due || "").localeCompare(b.due || ""));
-  const total60 = soon.reduce((s, b) => s + (b.amount || 0), 0);
+  return <Schedule items={data.bills} update={updateBills} kind="bill" />;
+}
 
-  const markPaid = (b) => updateBills((list) => list.map((x) => (x.id !== b.id ? x : x.repeat === "once" ? { ...x, paid: true } : { ...x, due: addPeriod(x.due, x.repeat) })));
-  const save = (b) => updateBills((list) => (list.some((x) => x.id === b.id) ? list.map((x) => (x.id === b.id ? b : x)) : [...list, b]));
-  const remove = (b) => updateBills((list) => list.filter((x) => x.id !== b.id));
+function Income({ data, updateIncome }) {
+  return <Schedule items={data.income || []} update={updateIncome} kind="income" />;
+}
+
+// Bills and Income share one screen: things that land on a date, once or on repeat.
+function Schedule({ items, update, kind }) {
+  const isInc = kind === "income";
+  const [edit, setEdit] = useState(null);
+  const soon = upcoming(items, 60);
+  const later = items.filter((b) => !(b.paid && b.repeat === "once") && !soon.some((s) => s.id === b.id)).sort((a, b) => (a.due || "").localeCompare(b.due || ""));
+  const total60 = soon.reduce((s, b) => s + (b.amount || 0), 0);
+  const monthly = items.filter((b) => !(b.paid && b.repeat === "once")).reduce((s, b) => s + (!b.amount ? 0 : b.repeat === "monthly" ? b.amount : b.repeat === "biweekly" ? (b.amount * 26) / 12 : b.repeat === "weekly" ? (b.amount * 52) / 12 : 0), 0);
+
+  const markDone = (b) => update((list) => list.map((x) => (x.id !== b.id ? x : x.repeat === "once" ? { ...x, paid: true } : { ...x, due: addPeriod(x.due, x.repeat) })));
+  const save = (b) => update((list) => (list.some((x) => x.id === b.id) ? list.map((x) => (x.id === b.id ? b : x)) : [...list, b]));
+  const remove = (b) => update((list) => list.filter((x) => x.id !== b.id));
+  const money = (b) => (b.amount == null ? <span className="text-[var(--orange)]">TBD</span> : <span className={isInc ? "text-[var(--green)]" : ""}>{isInc ? "+" : ""}{fmt(b.amount)}</span>);
+  const every = { monthly: "monthly", biweekly: "every 2 weeks", weekly: "weekly", yearly: "yearly" };
 
   return (
     <>
-      <PageHeader title="Bills" sub={`${fmt(total60)} due in the next 60 days`}
-        right={<Button kind="primary" onClick={() => setEdit({ id: `b${Date.now()}`, name: "", amount: null, due: todayISO(), repeat: "once", note: "" })}>Add bill</Button>} />
+      <PageHeader title={isInc ? "Income" : "Bills"} sub={`${fmt(total60)} ${isInc ? "coming in" : "due"} in the next 60 days${isInc && monthly ? ` · about ${fmt(monthly)}/mo regular` : ""}`}
+        right={<Button kind="primary" onClick={() => setEdit({ id: `${isInc ? "i" : "b"}${Date.now()}`, name: "", amount: null, due: todayISO(), repeat: isInc ? "monthly" : "once", note: "" })}>{isInc ? "Add income" : "Add bill"}</Button>} />
       <SectionTitle>Next 60 days</SectionTitle>
       <List>
         {soon.map((b, i) => (
           <div key={b.id + i} className="flex items-center gap-3 px-4 py-3">
-            <button onClick={() => markPaid(b)} title="Mark paid" className="w-6 h-6 rounded-full ring-2 ring-[var(--hair-strong)] hover:ring-[var(--green)] shrink-0" />
-            <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setEdit(bills.find((x) => x.id === b.id))}>
+            <button onClick={() => markDone(b)} title={isInc ? "Mark received" : "Mark paid"} className="w-6 h-6 rounded-full ring-2 ring-[var(--hair-strong)] hover:ring-[var(--green)] shrink-0" />
+            <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setEdit(items.find((x) => x.id === b.id))}>
               <div className="text-[15px] truncate">{b.name}</div>
-              <div className={`text-[13px] truncate ${b.overdue ? "text-[var(--red)]" : "text-[var(--muted)]"}`}>
-                {b.overdue ? "Overdue · " : ""}{niceDate(b.due)}{b.repeat !== "once" ? ` · ${b.repeat}` : ""}{b.note ? ` · ${b.note}` : ""}
+              <div className={`text-[13px] truncate ${b.overdue ? (isInc ? "text-[var(--orange)]" : "text-[var(--red)]") : "text-[var(--muted)]"}`}>
+                {b.overdue ? (isInc ? "Late · " : "Overdue · ") : ""}{niceDate(b.due)}{every[b.repeat] ? ` · ${every[b.repeat]}` : ""}{b.note ? ` · ${b.note}` : ""}
               </div>
             </div>
-            <div className="text-[15px] tabular-nums">{b.amount == null ? <span className="text-[var(--orange)]">TBD</span> : fmt(b.amount)}</div>
+            <div className="text-[15px] tabular-nums">{money(b)}</div>
           </div>
         ))}
+        {!soon.length && <Row left={isInc ? "Nothing expected yet - add your paycheck and rents" : "Nothing due"} />}
       </List>
       {later.length > 0 && <>
         <SectionTitle>Later</SectionTitle>
-        <List>{later.map((b) => <Row key={b.id} left={b.name} sub={`${niceDate(b.due)}${b.note ? ` · ${b.note}` : ""}`} right={b.amount == null ? "TBD" : fmt(b.amount)} onClick={() => setEdit(b)} />)}</List>
+        <List>{later.map((b) => <Row key={b.id} left={b.name} sub={`${niceDate(b.due)}${b.note ? ` · ${b.note}` : ""}`} right={money(b)} onClick={() => setEdit(b)} />)}</List>
       </>}
-      <div className="text-[13px] text-[var(--muted)] px-1 mt-3">Tap the circle when a bill is paid. Monthly bills roll to next month.</div>
-      {edit && <BillSheet bill={edit} onSave={(b) => { save(b); setEdit(null); }} onDelete={(b) => { remove(b); setEdit(null); }} onClose={() => setEdit(null)} />}
+      <div className="text-[13px] text-[var(--muted)] px-1 mt-3">{isInc ? "Tap the circle when money lands. Repeating income rolls to its next date. The cash flow on Debt plan uses this list." : "Tap the circle when a bill is paid. Monthly bills roll to next month."}</div>
+      {edit && <BillSheet bill={edit} noun={isInc ? "income" : "bill"} onSave={(b) => { save(b); setEdit(null); }} onDelete={(b) => { remove(b); setEdit(null); }} onClose={() => setEdit(null)} />}
     </>
   );
 }
 
-function BillSheet({ bill, onSave, onDelete, onClose }) {
+function BillSheet({ bill, noun = "bill", onSave, onDelete, onClose }) {
   const [b, setB] = useState({ ...bill });
   const set = (k, v) => setB((x) => ({ ...x, [k]: v }));
   return (
-    <Sheet title={bill.name ? "Edit bill" : "New bill"} onClose={onClose}>
+    <Sheet title={`${bill.name ? "Edit" : "New"} ${noun}`} onClose={onClose}>
       <div className="space-y-3">
-        <input className={input} placeholder="What is it?" value={b.name} onChange={(e) => set("name", e.target.value)} />
+        <input className={input} placeholder={noun === "income" ? "Who or what? (e.g. Rent - Dana)" : "What is it?"} value={b.name} onChange={(e) => set("name", e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <input className={input} inputMode="decimal" placeholder="Amount (blank = TBD)" value={b.amount ?? ""} onChange={(e) => set("amount", e.target.value === "" ? null : Number(e.target.value))} />
           <input className={input} type="date" value={b.due || ""} onChange={(e) => set("due", e.target.value)} />
@@ -626,7 +639,7 @@ function DebtPlan({ data, updateState, updateBills }) {
   const ordered = [...debts].sort((a, b) => (b.apr || 0) - (a.apr || 0));
   const payoff = Object.fromEntries((res.order || []).map((o) => [o.id, o.ym]));
   const cash = cashTotal(balances.accounts || [], manual);
-  const fc = useMemo(() => forecast({ cash, bills, txns: state.txns, rules: state.rules, days: 90 }), [cash, bills, state]);
+  const fc = useMemo(() => forecast({ cash, bills, income: data.income, txns: state.txns, rules: state.rules, days: 90 }), [cash, bills, data.income, state]);
   const low = fc.pts.reduce((m, p) => (p.bal < m.bal ? p : m), fc.pts[0]);
   const extra = planAmt > minTotal && !res.infeasible;
   const len = Math.max(minRes.series?.length || 0, res.series?.length || 0);
@@ -684,7 +697,7 @@ function DebtPlan({ data, updateState, updateBills }) {
         </div>
         <LineChart points={fc.pts.map((p) => ({ x: p.date, y: p.bal }))} xLabel={(d, full) => (full ? longDate(d) : niceDate(d))} color="var(--accent)" />
         <div className="text-[12px] text-[var(--muted)] mt-1">
-          Starts with today's cash ({fmt(cash)}), takes out every bill on the Bills tab, and adds your paycheck ({fmt(fc.paycheck)} every 2 weeks) and rent (about {fmt(fc.rentMonthly)}/mo).
+          Starts with today's cash ({fmt(cash)}), takes out every bill on the Bills tab, and adds everything on the Income tab.
         </div>
       </Card>
       <List className="mt-3">
@@ -747,73 +760,3 @@ function DebtSheet({ debt, onSave, onDelete, onClose }) {
   );
 }
 
-/* ================= SELL STUFF ================= */
-
-const MARKETPLACE_NEW = "https://www.facebook.com/marketplace/create/item";
-const STATUS = [["idea", "To list"], ["listed", "Listed"], ["sold", "Sold"]];
-
-function Sell({ data, updateSell }) {
-  const items = data.sell || [];
-  const [edit, setEdit] = useState(null);
-  const [copied, setCopied] = useState(null);
-  const by = (s) => items.filter((i) => (i.status || "idea") === s);
-  const soldTotal = by("sold").reduce((s, i) => s + (Number(i.soldFor ?? i.price) || 0), 0);
-  const listedTotal = [...by("idea"), ...by("listed")].reduce((s, i) => s + (Number(i.price) || 0), 0);
-  const save = (it) => updateSell((list) => (list.some((x) => x.id === it.id) ? list.map((x) => (x.id === it.id ? it : x)) : [...list, it]));
-  const remove = (it) => updateSell((list) => list.filter((x) => x.id !== it.id));
-  const copy = async (it) => {
-    const text = `${it.name}${it.price ? ` - $${it.price}` : ""}\n\n${it.note || ""}\n\nPickup in Nevada City. Message me if interested.`.trim();
-    try { await navigator.clipboard.writeText(text); setCopied(it.id); setTimeout(() => setCopied(null), 1500); } catch { /* clipboard blocked */ }
-  };
-
-  return (
-    <>
-      <PageHeader title="Sell stuff" sub={`${fmt(listedTotal)} waiting to sell · ${fmt(soldTotal)} sold`}
-        right={<Button kind="primary" onClick={() => setEdit({ id: `s${Date.now()}`, name: "", price: "", status: "idea", note: "" })}>Add item</Button>} />
-      <Card className="p-4 flex items-center gap-3">
-        <div className="flex-1 text-[15px]">Post on Facebook Marketplace</div>
-        <a href={MARKETPLACE_NEW} target="_blank" rel="noreferrer" className="px-3.5 py-1.5 rounded-full text-[14px] font-medium bg-[var(--accent)] text-white">Open</a>
-      </Card>
-      <div className="text-[12px] text-[var(--muted)] px-1 mt-2">Add things here as you think of them. Tap Copy to grab a ready-made listing, then paste it into Marketplace.</div>
-      {STATUS.map(([s, label]) => by(s).length > 0 && (
-        <div key={s}>
-          <SectionTitle>{label}</SectionTitle>
-          <List>
-            {by(s).map((it) => (
-              <div key={it.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setEdit(it)}>
-                  <div className="text-[15px] truncate">{it.name}</div>
-                  {it.note && <div className="text-[13px] text-[var(--muted)] truncate">{it.note}</div>}
-                </div>
-                <div className="text-[15px] tabular-nums">{fmt(Number(s === "sold" ? it.soldFor ?? it.price : it.price) || 0)}</div>
-                {s !== "sold" && <button onClick={() => copy(it)} className="text-[13px] text-[var(--accent)] shrink-0">{copied === it.id ? "Copied" : "Copy"}</button>}
-              </div>
-            ))}
-          </List>
-        </div>
-      ))}
-      {!items.length && <Card className="p-6 mt-4 text-center text-[var(--muted)]">Nothing here yet. Add the first thing you want gone.</Card>}
-      {edit && <ItemSheet item={edit} onSave={(it) => { save(it); setEdit(null); }} onDelete={(it) => { remove(it); setEdit(null); }} onClose={() => setEdit(null)} />}
-    </>
-  );
-}
-
-function ItemSheet({ item, onSave, onDelete, onClose }) {
-  const [it, setIt] = useState({ ...item });
-  const set = (k, v) => setIt((x) => ({ ...x, [k]: v }));
-  return (
-    <Sheet title={item.name ? "Edit item" : "New item"} onClose={onClose}>
-      <div className="space-y-3">
-        <input className={input} placeholder="What is it?" value={it.name} onChange={(e) => set("name", e.target.value)} />
-        <input className={input} inputMode="decimal" placeholder="Asking price" value={it.price ?? ""} onChange={(e) => set("price", e.target.value)} />
-        <textarea className={`${input} min-h-[90px]`} placeholder="Description for the listing (condition, size, etc.)" value={it.note || ""} onChange={(e) => set("note", e.target.value)} />
-        <Segmented value={it.status || "idea"} onChange={(v) => set("status", v)} options={STATUS} />
-        {it.status === "sold" && <input className={input} inputMode="decimal" placeholder="Sold for" value={it.soldFor ?? ""} onChange={(e) => set("soldFor", e.target.value)} />}
-        <div className="flex justify-between pt-2">
-          {item.name ? <Button kind="danger" onClick={() => onDelete(it)}>Delete</Button> : <span />}
-          <Button kind="primary" disabled={!it.name} onClick={() => onSave(it)}>Save</Button>
-        </div>
-      </div>
-    </Sheet>
-  );
-}
