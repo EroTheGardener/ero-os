@@ -269,11 +269,26 @@ function normalizeSavedCategories(existing = []) {
 }
 
 const MOONLIGHT_RE = /matt sconzo|matthew sommer/i;
+const TRACTOR_CATEGORY = "Tractor";
+// Matt's Venmos that were tractor / mower work, not the van.
+const TRACTOR_NOTE_RE = /matt sconzo: (tractor|ignition disassembly)/i;
+const SPLIT_NOTE_RE = /matt sconzo: tractors and van/i; // half tractor, half Moonlight
+
+function splitTractorVan(t) {
+  if (!SPLIT_NOTE_RE.test(t.desc || "") || t.splitOf) return [t];
+  const half = Math.round((Number(t.amount) / 2) * 100) / 100;
+  const rest = Math.round((Number(t.amount) - half) * 100) / 100;
+  return [
+    { ...t, key: `${t.key}#tractor`, amount: half, category: TRACTOR_CATEGORY, splitOf: t.key },
+    { ...t, key: `${t.key}#moonlight`, amount: rest, category: "Moonlight (van)", splitOf: t.key },
+  ];
+}
 
 function normalizeSavedTxns(existing = []) {
-  return (existing || []).map((t) => {
+  return (existing || []).flatMap(splitTractorVan).map((t) => {
+    if (TRACTOR_NOTE_RE.test(t.desc || "") && !t.splitOf) t = { ...t, category: TRACTOR_CATEGORY };
     // Van work hand-tagged as Vehicle & Equipment before Moonlight had its own category.
-    if (t.category === "Vehicle & Equipment" && MOONLIGHT_RE.test(t.desc || "")) t = { ...t, category: "Moonlight (van)" };
+    else if (t.category === "Vehicle & Equipment" && MOONLIGHT_RE.test(t.desc || "")) t = { ...t, category: "Moonlight (van)" };
     if (t.date && /^\d{4}-\d{2}-\d{2}$/.test(t.date)) return t;
     const first = String(t.key || "").split("|")[0];
     if (/^\d{4}-\d{2}-\d{2}$/.test(first)) return { ...t, date: first, ym: first.slice(0, 7) };
@@ -466,7 +481,7 @@ const TRANSFER_CATEGORY = "Transfers & Payments";
 const INCOME_CATEGORIES = [INCOME_CATEGORY, "Paycheck", "Rental Income", "Side Hustle", "Personal Sales"];
 // Property Projects = build-out spending meant to come back as rental income.
 const PROJECTS_CATEGORY = "Property Projects";
-const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, "Moonlight (van)", TRANSFER_CATEGORY];
+const DEFAULT_CATEGORIES = ["Paycheck", "Rental Income", "Side Hustle", "Personal Sales", PROJECTS_CATEGORY, "Moonlight (van)", "Tractor", TRANSFER_CATEGORY];
 
 function isIncomeCategory(cat) {
   return INCOME_CATEGORIES.includes(cat);
