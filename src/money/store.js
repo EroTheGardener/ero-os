@@ -134,7 +134,7 @@ export const SEED_BILLS = [
   { id: "dmv", name: "DMV registrations", amount: null, due: "2026-11-30", repeat: "once", note: "Find the letter" },
   { id: "rats", name: "Rat treatment", amount: 400, due: "2026-11-15", repeat: "once" },
   { id: "melody-bday", name: "Melody's birthday + Airbnb share", amount: null, due: "2026-11-20", repeat: "once", note: "Set the real date and amount" },
-  { id: "braces", name: "Braces", amount: 6000, due: "2027-01-15", repeat: "once", note: "Plan on a 0% payment plan" },
+  { id: "braces", name: "Braces", amount: null, due: "2027-01-15", repeat: "once", note: "$6,000 total - set the monthly payment once the plan is picked" },
   { id: "usb-0292", name: "US Bank 0292 minimum", amount: 367, due: "2026-11-03", repeat: "monthly", note: "Autopay" },
   { id: "usb-0452", name: "US Bank 0452 minimum", amount: 124, due: "2026-11-22", repeat: "monthly", note: "Autopay" },
   { id: "excite-loan", name: "Excite loan", amount: 503, due: "2026-12-01", repeat: "monthly", note: "Paid ahead - $0 due 11/1" },
@@ -168,4 +168,95 @@ export function upcoming(bills, days = 45, today = new Date()) {
     }
   }
   return out.sort((a, b) => a.due.localeCompare(b.due));
+}
+
+/* ---------- extra stores ---------- */
+
+export const MANUAL_KEY = "eroOS.manual.v1"; // { cashOnHand, cashUpdatedAt }
+export const SELL_KEY = "eroOS.sell.v1"; // [{ id, name, price, status, soldFor, soldOn, note }]
+export const HISTORY_KEY = "eroOS.history.v1"; // { points: [{ date, net, score, experian, transunion, equifax }] }
+
+export async function loadExtras() {
+  const [manual, sell, history] = await Promise.all([getJSON(MANUAL_KEY), getJSON(SELL_KEY), getJSON(HISTORY_KEY)]);
+  return { manual: manual || { cashOnHand: 0 }, sell: sell || [], history: history || { points: [] } };
+}
+export const saveKey = (key, obj) => window.storage.set(key, JSON.stringify(obj));
+
+/* ---------- periods (QuickBooks-style) ---------- */
+
+export const PERIODS = [
+  ["mtd", "This month"],
+  ["last-month", "Last month"],
+  ["7d", "Last 7 days"],
+  ["14d", "Last 14 days"],
+  ["30d", "Last 30 days"],
+  ["90d", "Last 90 days"],
+  ["qtd", "Quarter to date"],
+  ["ytd", "Year to date"],
+  ["all", "All time"],
+];
+
+const iso = (d) => d.toISOString().slice(0, 10);
+export function periodRange(p, now = new Date()) {
+  const y = now.getFullYear(), m = now.getMonth();
+  const today = iso(now);
+  const ago = (n) => iso(new Date(now.getTime() - (n - 1) * 864e5));
+  switch (p) {
+    case "last-month": return [iso(new Date(Date.UTC(y, m - 1, 1))), iso(new Date(Date.UTC(y, m, 0)))];
+    case "7d": return [ago(7), today];
+    case "14d": return [ago(14), today];
+    case "30d": return [ago(30), today];
+    case "90d": return [ago(90), today];
+    case "qtd": return [iso(new Date(Date.UTC(y, Math.floor(m / 3) * 3, 1))), today];
+    case "ytd": return [`${y}-01-01`, today];
+    case "all": return ["0000-01-01", today];
+    default: return [iso(new Date(Date.UTC(y, m, 1))), today];
+  }
+}
+export const inRange = ([a, b]) => (t) => t.date && t.date >= a && t.date <= b;
+export const monthsIn = ([a, b]) => Math.max(1, (new Date(b) - new Date(a === "0000-01-01" ? b : a)) / 864e5 / 30.44);
+
+// Average monthly spend per category over the last 6 full months. Used as the
+// budget wherever a real budget hasn't been set.
+export function categoryAverages(txns, rules, now = new Date()) {
+  const months = [];
+  for (let i = 1; i <= 6; i++) months.push(iso(new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1))).slice(0, 7));
+  const s = summarize(txns, rules, (t) => months.includes(t.ym));
+  const out = {};
+  for (const c of Object.values(s.byCat)) if (!c.income) out[c.cat] = Math.max(0, c.total / 6);
+  return out;
+}
+export const budgetFor = (cat, budgets, avgs) => (budgets[cat] ? { amount: budgets[cat], avg: false } : avgs[cat] ? { amount: avgs[cat], avg: true } : null);
+
+/* ---------- cash flow forecast ---------- */
+
+// Day-by-day projected cash for the next `days`: today's cash, minus bills,
+// plus your paycheck (every 14 days from the last one) and rent (3-month average, on the 1st).
+export function forecast({ cash, bills, txns, rules, days = 90, now = new Date() }) {
+  const pay = txns.filter((t) => categoryOf(t, rules) === "Paycheck" && t.amount > 0).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const months = [1, 2, 3].map((i) => iso(new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1))).slice(0, 7));
+  const rent = summarize(txns, rules, (t) => months.includes(t.ym)).byCat["Rental Income"];
+  const rentMonthly = rent ? rent.total / 3 : 0;
+  const events = [];
+  for (const b of upcoming(bills, days, now)) if (b.amount) events.push({ date: b.due, amt: -b.amount, label: b.name });
+  if (pay) {
+    let d = new Date(pay.date + "T12:00:00");
+    for (let i = 0; i < 12; i++) {
+      d = new Date(d.getTime() + 14 * 864e5);
+      if (iso(d) > iso(new Date(now.getTime() + days * 864e5))) break;
+      if (iso(d) >= iso(now)) events.push({ date: iso(d), amt: pay.amount, label: "Paycheck" });
+    }
+  }
+  for (let i = 1; i <= Math.ceil(days / 30) + 1; i++) {
+    const d = iso(new Date(Date.UTC(now.getFullYear(), now.getMonth() + i, 1)));
+    if (rentMonthly && d <= iso(new Date(now.getTime() + days * 864e5))) events.push({ date: d, amt: rentMonthly, label: "Rent (avg)" });
+  }
+  const pts = [];
+  let bal = cash;
+  for (let i = 0; i <= days; i++) {
+    const d = iso(new Date(now.getTime() + i * 864e5));
+    for (const e of events) if (e.date === d || (i === 0 && e.date < d)) bal += e.amt;
+    pts.push({ date: d, bal });
+  }
+  return { pts, events: events.sort((a, b) => a.date.localeCompare(b.date)), rentMonthly, paycheck: pay?.amount || 0 };
 }
