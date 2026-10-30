@@ -32,6 +32,7 @@ const cleanAcct = (name) => name.replace(/\s*\(X*\d{4}\)\s*$/, "").replace(/�+
 export default function App() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState(() => { try { return localStorage.getItem("money.tab") || "home"; } catch { return "home"; } });
+  const [menu, setMenu] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -83,19 +84,38 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 px-4 sm:px-8 pt-6 pb-28 md:pb-12 max-w-4xl mx-auto w-full">
+      <header className="md:hidden sticky top-0 z-40 flex items-center gap-2 px-2 pt-[env(safe-area-inset-top)] h-[calc(env(safe-area-inset-top)+48px)] bg-[var(--side)] backdrop-blur-xl border-b border-[var(--hair)]">
+        <button aria-label="Menu" onClick={() => setMenu(true)} className="w-10 h-10 grid place-items-center rounded-lg hover:bg-[var(--hover)]">
+          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+        </button>
+        <div className="text-[16px] font-semibold">{(TABS.find((t) => t[0] === tab) || [])[1]}</div>
+      </header>
+
+      <main className="flex-1 min-w-0 px-4 sm:px-8 pt-4 md:pt-6 pb-12 max-w-4xl mx-auto w-full">
         <Page {...props} />
       </main>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-7 bg-[var(--side)] backdrop-blur-xl border-t border-[var(--hair)] pb-[env(safe-area-inset-bottom)]">
-        {TABS.map(([id, label, d]) => (
-          <button key={id} onClick={() => setTab(id)} className={`flex flex-col items-center gap-0.5 py-2 text-[9.5px] ${tab === id ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>
-            <Icon d={d} className="w-[22px] h-[22px]" />{label.split(" ")[0]}
-          </button>
-        ))}
-      </nav>
+      {/* Phone: hamburger menu in the top left instead of a bottom tab bar */}
+      {menu && (
+        <div className="md:hidden fixed inset-0 z-50" onClick={() => setMenu(false)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div onClick={(e) => e.stopPropagation()}
+            className="absolute left-0 top-0 bottom-0 w-72 max-w-[85%] flex flex-col p-3 pt-[calc(env(safe-area-inset-top)+12px)] bg-[var(--bg)] shadow-2xl">
+            <div className="px-3 pt-2 pb-5 text-[17px] font-semibold">Ero's Money</div>
+            {TABS.map(([id, label, d]) => (
+              <button key={id} onClick={() => { setTab(id); setMenu(false); }}
+                className={`flex items-center gap-3 px-3 py-3 rounded-lg text-[16px] text-left ${tab === id ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}>
+                <Icon d={d} className="w-[20px] h-[20px]" />{label}
+              </button>
+            ))}
+            <div className="mt-auto px-3 pb-[calc(env(safe-area-inset-bottom)+8px)] text-[12px] text-[var(--muted)]">
+              <SyncLine data={data} sync={sync} syncing={syncing} />
+            </div>
+          </div>
+        </div>
+      )}
 
-      {toast && <div className="fixed z-50 left-1/2 -translate-x-1/2 bottom-24 md:bottom-8 px-4 py-2 rounded-full bg-[var(--text)] text-[var(--bg)] text-[14px] shadow-lg">{toast}</div>}
+      {toast && <div className="fixed z-50 left-1/2 -translate-x-1/2 bottom-8 px-4 py-2 rounded-full bg-[var(--text)] text-[var(--bg)] text-[14px] shadow-lg">{toast}</div>}
     </div>
   );
 }
@@ -302,38 +322,63 @@ function AccountSheet({ account, state, onClose }) {
 
 /* ================= SPENDING ================= */
 
+// Spending periods: a month ("2026-10"), quarter ("2026 Q4") or year ("2026").
+const periodKey = (ym, mode) => (mode === "year" ? ym.slice(0, 4) : mode === "quarter" ? `${ym.slice(0, 4)} Q${Math.floor((Number(ym.slice(5, 7)) - 1) / 3) + 1}` : ym);
+const periodLabel = (k, mode) => (mode === "month" ? prettyYM(k) : mode === "quarter" ? `${k.slice(5)} ${k.slice(0, 4)}` : k);
+
 function Spending({ data, updateState }) {
   const { state } = data;
-  const months = useMemo(() => [...new Set(state.txns.map((t) => t.ym))].filter(Boolean).sort().reverse().slice(0, 18), [state.txns]);
-  const [ym, setYm] = useState(months[0] || thisYM());
+  const [mode, setMode] = useState("month");
+  const allMonths = useMemo(() => [...new Set(state.txns.map((t) => t.ym))].filter(Boolean).sort().reverse(), [state.txns]);
+  const periods = useMemo(() => [...new Set(allMonths.map((m) => periodKey(m, mode)))].slice(0, mode === "month" ? 18 : 12), [allMonths, mode]);
+  const [picked, setPicked] = useState({});
+  const key = periods.includes(picked[mode]) ? picked[mode] : periods[0] || periodKey(thisYM(), mode);
+  const setKey = (k) => setPicked((p) => ({ ...p, [mode]: k }));
+  const inPeriod = (t) => !!t.ym && periodKey(t.ym, mode) === key;
+  const label = periodLabel(key, mode);
+  // Budgets are monthly, so scale them by how many months of this period have happened so far.
+  const now = thisYM();
+  const monthsSoFar = useMemo(() => {
+    if (mode === "month") return 1;
+    const y = Number(key.slice(0, 4));
+    const first = mode === "year" ? 1 : (Number(key.slice(-1)) - 1) * 3 + 1;
+    const n = mode === "year" ? 12 : 3;
+    let c = 0;
+    for (let i = 0; i < n; i++) if (`${y}-${String(first + i).padStart(2, "0")}` <= now) c++;
+    return Math.max(1, c);
+  }, [key, mode, now]);
   const [cat, setCat] = useState(null);
-  const sum = useMemo(() => summarize(state.txns, state.rules, (t) => t.ym === ym), [state, ym]);
+  const sum = useMemo(() => summarize(state.txns, state.rules, inPeriod), [state, key, mode]);
   const avgs = useMemo(() => categoryAverages(state.txns, state.rules), [state]);
   const spend = Object.values(sum.byCat).filter((c) => !c.income).sort((a, b) => b.total - a.total);
   const inc = Object.values(sum.byCat).filter((c) => c.income).sort((a, b) => b.total - a.total);
   const budgeted = Object.keys(state.budgets).filter((c) => state.budgets[c] && !sum.byCat[c]);
+  const perMo = monthsSoFar > 1 ? ` · ${fmt(sum.spent / monthsSoFar)}/mo` : "";
 
   return (
     <>
-      <PageHeader title="Spending" sub={`${fmt(sum.spent)} out · ${fmt(sum.income)} in`} />
+      <PageHeader title="Spending" sub={`${label}: ${fmt(sum.spent)} out · ${fmt(sum.income)} in${perMo}`} />
+      <div className="mb-3">
+        <Segmented value={mode} onChange={setMode} options={[["month", "Month"], ["quarter", "Quarter"], ["year", "Year"]]} />
+      </div>
       <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar">
-        {months.map((m) => (
-          <button key={m} onClick={() => setYm(m)}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-[14px] ${m === ym ? "bg-[var(--accent)] text-white" : "bg-[var(--fill)]"}`}>{prettyYM(m)}</button>
+        {periods.map((m) => (
+          <button key={m} onClick={() => setKey(m)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-[14px] ${m === key ? "bg-[var(--accent)] text-white" : "bg-[var(--fill)]"}`}>{periodLabel(m, mode)}</button>
         ))}
       </div>
 
       <SectionTitle>Spending categories</SectionTitle>
-      <CategoryList cats={spend} budgets={state.budgets} avgs={avgs} onOpen={setCat} extraBudgeted={budgeted} />
-      <div className="text-[12px] text-[var(--muted)] px-1 mt-2">Tap a category to see what's in it, move things around, or set your own budget. "avg" means your 6-month average.</div>
+      <CategoryList cats={spend} budgets={state.budgets} avgs={avgs} scale={monthsSoFar} onOpen={setCat} extraBudgeted={budgeted} />
+      <div className="text-[12px] text-[var(--muted)] px-1 mt-2">Tap a category to see what's in it, move things around, or set your own budget. "avg" means your 6-month average.{monthsSoFar > 1 ? ` Budgets are monthly, shown here x${monthsSoFar} for the months of ${label} so far.` : ""}</div>
 
       <SectionTitle>Income</SectionTitle>
       <List>
         {inc.map((c) => <Row key={c.cat} left={c.cat} sub={`${c.n} deposits`} right={<span className="text-[var(--green)]">{fmt(c.total)}</span>} onClick={() => setCat(c.cat)} />)}
-        {!inc.length && <Row left="No income this month yet" />}
+        {!inc.length && <Row left="No income in this period yet" />}
       </List>
 
-      {cat && <CategorySheet cat={cat} filter={(t) => t.ym === ym} label={prettyYM(ym)} avg={avgs[cat]} state={state} updateState={updateState} onClose={() => setCat(null)} />}
+      {cat && <CategorySheet cat={cat} filter={inPeriod} label={label} avg={avgs[cat]} state={state} updateState={updateState} onClose={() => setCat(null)} />}
     </>
   );
 }
