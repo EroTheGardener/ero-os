@@ -197,6 +197,12 @@ const APPEND_RULES = [
   { keyword: "amerihome", category: "Housing: Mortgage" },
   { keyword: "nevada county ta", category: "Property Tax" },
   { keyword: "pgande", category: "Utilities" },
+  { keyword: "pg&e", category: "Utilities" },
+  { keyword: "claude by anth", category: "Software & AI" },
+  // Bank-sync wording for moves between your own accounts
+  { keyword: "ach: eric gorski", category: "Transfers & Payments" },
+  { keyword: "gorski pmt to", category: "Transfers & Payments" },
+  { keyword: "deposit from self-directed", category: "Transfers & Payments" },
   { keyword: "united fin cas", category: "Insurance" },
   { keyword: "california fair", category: "Insurance" },
   { keyword: "bamboo insurance", category: "Insurance" },
@@ -510,6 +516,8 @@ function positiveTransferCategory(desc) {
     "from eric gorski",
     "external deposit egorski",
     "ero us bank",
+    "deposit from self-directed",
+    "ach: eric gorski",
     // Leo / Ecocamp Coyote pass-through loans - money in that goes right back out.
     "michael osterback",
     "ecocamp coyote",
