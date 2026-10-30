@@ -2129,6 +2129,21 @@ function SpendingTab({ txns, setTxns, rules, setRules, budgets, setBudgets, cate
   return (
     <div>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+        <button
+          style={btnStyle}
+          onClick={async () => {
+            setStatus("Syncing banks...");
+            try {
+              const r = await fetch("/api/bank-sync");
+              const j = await r.json();
+              if (!r.ok) { setStatus(`Bank sync failed: ${j.error || r.status}`); return; }
+              setStatus(`Bank sync: added ${j.added} new transaction${j.added === 1 ? "" : "s"} from ${j.accounts} accounts. Reloading...`);
+              if (j.added) setTimeout(() => location.reload(), 800);
+            } catch (e) {
+              setStatus(`Bank sync failed: ${e.message}`);
+            }
+          }}
+        >Sync banks</button>
         <button onClick={() => fileRef.current?.click()} style={btnStyle}>Upload bank CSVs</button>
         <input ref={fileRef} type="file" accept=".csv,text/csv" multiple style={{ display: "none" }} onChange={onFile} />
         <div style={{ width: 180 }}>
