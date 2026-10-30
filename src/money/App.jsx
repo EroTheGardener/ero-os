@@ -506,12 +506,12 @@ function Reports({ data, updateHistory }) {
           <span className="text-[28px] font-semibold tabular-nums">{last?.score ?? "—"}</span>
           {last && <span className="text-[13px] text-[var(--muted)]">{[last.experian && `Experian ${last.experian}`, last.transunion && `TransUnion ${last.transunion}`, last.equifax && `Equifax ${last.equifax}`].filter(Boolean).join(" · ") || niceDate(last.date)}</span>}
         </div>
-        <LineChart points={scores} zero={false} format={(v) => Math.round(v)} axis={(v) => Math.round(v)} xLabel={(d, full) => (full ? longDate(d) : yr(d))} color="var(--accent)" />
+        <LineChart timeScale points={scores} zero={false} format={(v) => Math.round(v)} axis={(v) => Math.round(v)} xLabel={(d, full) => (full ? longDate(d) : yr(d))} color="var(--accent)" />
       </Card>
 
       <SectionTitle>Net worth (from your Fuel Units sheet)</SectionTitle>
       <Card className="p-4">
-        <LineChart points={nets} xLabel={(d, full) => (full ? longDate(d) : yr(d))} color="var(--green)" />
+        <LineChart timeScale points={nets} xLabel={(d, full) => (full ? longDate(d) : yr(d))} color="var(--green)" />
         <div className="text-[12px] text-[var(--muted)] mt-1">Excludes the house. {nets.length} check-ins since {nets[0] ? yr(nets[0].x).replace("'", "20") : "—"}.</div>
       </Card>
       <div className="text-[13px] text-[var(--muted)] px-1 mt-3">Transfers between your own accounts, card payments and money set aside for retirement are left out of in/out, so this is real money in and out.</div>

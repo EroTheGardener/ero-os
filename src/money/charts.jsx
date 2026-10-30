@@ -21,13 +21,20 @@ const short = (v) => {
   return `${v < 0 ? "-" : ""}$${s}`;
 };
 
-function usePointer(n) {
+// xs: optional pixel x for each point (time-scaled charts); picks the nearest one.
+function usePointer(n, xs) {
   const ref = useRef(null);
   const [i, setI] = useState(null);
   const onMove = (e) => {
     const r = ref.current?.getBoundingClientRect();
     if (!r || n < 1) return;
     const x = ((e.clientX - r.left) / r.width) * W;
+    if (xs) {
+      let best = 0;
+      for (let j = 1; j < xs.length; j++) if (Math.abs(xs[j] - x) < Math.abs(xs[best] - x)) best = j;
+      setI(best);
+      return;
+    }
     const f = (x - P.l) / (W - P.l - P.r);
     setI(Math.max(0, Math.min(n - 1, Math.round(f * (n - 1)))));
   };
@@ -47,10 +54,14 @@ function Tooltip({ x, y, lines, H }) {
 
 // Line chart with y-axis gridlines and a hover crosshair.
 // Pass `points` ([{x, y}]) for one line, or `series` ([{name, color, points}]) for several sharing the same x's.
-export function LineChart({ points, series, height = 220, color = "var(--accent)", zero = true, format = (v) => fmt(v), axis = short, xLabel = (x) => x }) {
+// timeScale: x values are ISO dates and points are placed by actual date, with year ticks.
+export function LineChart({ points, series, height = 220, color = "var(--accent)", zero = true, format = (v) => fmt(v), axis = short, xLabel = (x) => x, timeScale = false }) {
   const S = series || [{ name: "", color, points: points || [] }];
   const xs = S[0].points;
-  const ptr = usePointer(xs.length);
+  const ts = timeScale ? xs.map((p) => Date.parse(p.x + "T12:00:00")) : null;
+  const t0 = ts ? Math.min(...ts) : 0, t1 = ts ? Math.max(...ts) : 1;
+  const Xt = (i) => P.l + ((ts[i] - t0) / Math.max(1, t1 - t0)) * (W - P.l - P.r);
+  const ptr = usePointer(xs.length, ts ? xs.map((_, i) => Xt(i)) : null);
   if (!xs.length) return <div className="text-[13px] text-[var(--muted)]">No data yet</div>;
   const H = height;
   const all = S.flatMap((s) => s.points.map((p) => p.y)).filter((v) => v != null);
@@ -58,7 +69,14 @@ export function LineChart({ points, series, height = 220, color = "var(--accent)
   if (min === max) { min -= 1; max += 1; }
   const ticks = niceTicks(min, max);
   min = ticks[0]; max = ticks[ticks.length - 1];
-  const X = (i) => P.l + (i / Math.max(1, xs.length - 1)) * (W - P.l - P.r);
+  const X = ts ? Xt : (i) => P.l + (i / Math.max(1, xs.length - 1)) * (W - P.l - P.r);
+  // Year gridlines for time-scaled charts (every 1, 2 or 3 years depending on span).
+  const years = [];
+  if (ts) {
+    const y0 = new Date(t0).getFullYear() + 1, y1 = new Date(t1).getFullYear();
+    const step = y1 - y0 > 12 ? 3 : y1 - y0 > 6 ? 2 : 1;
+    for (let y = y0; y <= y1; y += step) years.push({ y, x: P.l + ((Date.parse(`${y}-01-01T12:00:00`) - t0) / Math.max(1, t1 - t0)) * (W - P.l - P.r) });
+  }
   const Y = (v) => P.t + (1 - (v - min) / (max - min)) * (H - P.t - P.b);
   const xt = [0, Math.floor((xs.length - 1) / 2), xs.length - 1];
   const i = ptr.i;
@@ -81,9 +99,16 @@ export function LineChart({ points, series, height = 220, color = "var(--accent)
           </g>
         );
       })}
-      {xt.map((j) => (
-        <text key={j} x={X(j)} y={H - 6} fontSize="11" fill="var(--muted)" textAnchor={j === 0 ? "start" : j === xs.length - 1 ? "end" : "middle"}>{xLabel(xs[j].x)}</text>
-      ))}
+      {ts
+        ? years.map(({ y, x }) => (
+          <g key={y}>
+            <line x1={x} x2={x} y1={P.t} y2={H - P.b} stroke="var(--hair)" />
+            <text x={x} y={H - 6} fontSize="11" fill="var(--muted)" textAnchor="middle">{`'${String(y).slice(2)}`}</text>
+          </g>
+        ))
+        : xt.map((j) => (
+          <text key={j} x={X(j)} y={H - 6} fontSize="11" fill="var(--muted)" textAnchor={j === 0 ? "start" : j === xs.length - 1 ? "end" : "middle"}>{xLabel(xs[j].x)}</text>
+        ))}
       {i != null && (
         <g>
           <line x1={X(i)} x2={X(i)} y1={P.t} y2={H - P.b} stroke="var(--muted)" strokeOpacity="0.5" />
