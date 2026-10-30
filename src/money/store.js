@@ -154,8 +154,9 @@ export function addPeriod(date, repeat) {
 
 // Occurrences of every bill between today and `days` ahead (unpaid only).
 export function upcoming(bills, days = 45, today = new Date()) {
-  const start = today.toISOString().slice(0, 10);
-  const end = new Date(today.getTime() + days * 864e5).toISOString().slice(0, 10);
+  const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+  const start = local(today);
+  const end = local(new Date(today.getTime() + days * 864e5));
   const out = [];
   for (const b of bills) {
     if (b.paid && b.repeat === "once") continue;
@@ -196,7 +197,8 @@ export const PERIODS = [
   ["all", "All time"],
 ];
 
-const iso = (d) => d.toISOString().slice(0, 10);
+// Local calendar date (not UTC), so evenings in California don't roll to tomorrow.
+const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
 export function periodRange(p, now = new Date()) {
   const y = now.getFullYear(), m = now.getMonth();
   const today = iso(now);
