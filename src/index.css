@@ -1,1 +1,48 @@
 @import "tailwindcss";
+
+/* Ero's Money - macOS-style palette. Light by default, follows the system in dark mode. */
+:root {
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --side: rgba(246, 246, 248, 0.82);
+  --text: #1d1d1f;
+  --muted: #86868b;
+  --hair: rgba(0, 0, 0, 0.08);
+  --hair-strong: rgba(0, 0, 0, 0.22);
+  --fill: rgba(120, 120, 128, 0.12);
+  --hover: rgba(0, 0, 0, 0.04);
+  --accent: #0a84ff;
+  --green: #28a745;
+  --red: #ff3b30;
+  --orange: #ff9500;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e;
+    --card: #2c2c2e;
+    --side: rgba(36, 36, 38, 0.82);
+    --text: #f5f5f7;
+    --muted: #98989d;
+    --hair: rgba(255, 255, 255, 0.08);
+    --hair-strong: rgba(255, 255, 255, 0.28);
+    --fill: rgba(120, 120, 128, 0.24);
+    --hover: rgba(255, 255, 255, 0.05);
+    --accent: #0a84ff;
+    --green: #32d74b;
+    --red: #ff453a;
+    --orange: #ff9f0a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+}
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+select { color: var(--text); }

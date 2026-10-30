@@ -2790,3 +2790,12 @@ function TrendChart({ Snapshots }) {
     </svg>
   );
 }
+
+// Shared money logic for the Ero's Money app (src/money). The old Financials UI above
+// is kept for reference but no longer rendered.
+export {
+  LS_KEY, SEED_DEBTS, SEED_RULES, INCOME_CATEGORIES, TRANSFER_CATEGORY, DEFAULT_CATEGORIES,
+  normalizeSavedTxns, mergeAppendedRules, normalizeSavedCategories, applyDebtCorrections,
+  displayCategoryForTxn, isIncomeCategory, isTransferCategory, categorySort, merchantKey,
+  simulate, addMonths, prettyYM, monthKeyOf,
+};

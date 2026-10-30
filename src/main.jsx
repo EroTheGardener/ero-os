@@ -2,12 +2,12 @@ import "./index.css";
 import "./storage-shim.js";
 import React from "react";
 import { createRoot } from "react-dom/client";
-import DebtPayoff from "./DebtPayoff.jsx";
+import App from "./money/App.jsx";
 
 const MONO = "ui-monospace, Menlo, monospace";
 
-/* Financials keeps everything it knows under this one key, in the cloud
-   and in a local copy. The four retired modules are in ../old. */
+/* Ero's Money keeps transactions, rules, budgets and debts under this key,
+   in the cloud and in a local copy. */
 const STORAGE_KEY = "eroOS.debtPayoff.v2";
 
 /* Crash catcher: if the app throws, show the error and a way out
@@ -67,6 +67,6 @@ class ErrorBoundary extends React.Component {
 
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
-    <DebtPayoff />
+    <App />
   </ErrorBoundary>
 );
