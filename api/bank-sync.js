@@ -11,6 +11,9 @@ const BAL_KEY = "eroOS.bankBalances.v1";
 // History before this came from CSV imports; only sync forward from here so
 // SimpleFIN's differently-worded descriptions don't duplicate old rows.
 const SYNC_START = "2026-10-10";
+// Personal budget only. Business accounts (GNWS, Earthcare, Nexus Garden) and
+// retirement/brokerage accounts still report balances but their transactions stay out.
+const EXCLUDE_TXNS = /gnws|business credit card|earthcare|nexus garden|\bira\b|brokerage/i;
 
 const sb = (path, init = {}) =>
   fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -55,6 +58,10 @@ export default async function handler(req, res) {
     const state = await readKey(KEY);
     if (!state) return res.status(500).json({ error: "no Financials data yet" });
     state.txns = state.txns || [];
+    // Clean out anything an earlier run pulled from an excluded account.
+    const before = state.txns.length;
+    state.txns = state.txns.filter((t) => !(String(t.key || "").startsWith("sf|") && EXCLUDE_TXNS.test(String(t.source || ""))));
+    const removed = before - state.txns.length;
 
     // Look back 30 days each run (SimpleFIN caps ranges at 90). Re-runs are safe:
     // every synced row is keyed by its SimpleFIN id.
@@ -71,6 +78,7 @@ export default async function handler(req, res) {
       const acctName = `${acct.org?.name || ""} ${acct.name || ""}`.trim();
       balances.push({ id: acct.id, name: acctName, balance: Number(acct.balance), available: acct["available-balance"] != null ? Number(acct["available-balance"]) : null, asOf: isoDay(acct["balance-date"]) });
 
+      if (EXCLUDE_TXNS.test(acctName)) continue;
       for (const tx of acct.transactions || []) {
         if (tx.pending) continue;
         const date = isoDay(tx.posted || tx.transacted_at);
@@ -92,13 +100,13 @@ export default async function handler(req, res) {
       }
     }
 
-    if (added) {
+    if (added || removed) {
       state.__savedAt = Date.now();
       await writeKey(KEY, state);
     }
     await writeKey(BAL_KEY, { syncedAt: new Date().toISOString(), accounts: balances, errors: data.errors || [] });
 
-    return res.status(200).json({ ok: true, added, skippedDup, accounts: balances.length, errors: data.errors || [] });
+    return res.status(200).json({ ok: true, added, removed, skippedDup, accounts: balances.length, errors: data.errors || [] });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
