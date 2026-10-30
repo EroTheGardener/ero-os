@@ -63,7 +63,8 @@ export function summarize(txns, rules, filter = () => true) {
   for (const t of txns) {
     if (!filter(t)) continue;
     const cat = categoryOf(t, rules);
-    if (isTransferCategory(cat)) continue;
+    // Transfers, and money set aside into savings/IRAs, aren't spending.
+    if (isTransferCategory(cat) || cat === "Savings & Investing") continue;
     const amt = Number(t.amount) || 0;
     if (isIncomeCategory(cat)) {
       income += amt;

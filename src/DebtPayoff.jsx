@@ -198,6 +198,31 @@ const APPEND_RULES = [
   { keyword: "nevada county ta", category: "Property Tax" },
   { keyword: "pgande", category: "Utilities" },
   { keyword: "pg&e", category: "Utilities" },
+  // Bank-sync wording: payments and moves between your own accounts
+  { keyword: "sofi cc pay", category: "Transfers & Payments" },
+  { keyword: "sofi credit card", category: "Transfers & Payments" },
+  { keyword: "excite credit u", category: "Transfers & Payments" },
+  { keyword: "web authorized pmt u.s. bank", category: "Transfers & Payments" },
+  { keyword: "chase credit crd", category: "Transfers & Payments" },
+  { keyword: "wf credit card", category: "Transfers & Payments" },
+  { keyword: "us bank na", category: "Transfers & Payments" },
+  { keyword: "cardmember serv", category: "Transfers & Payments" },
+  { keyword: "payment to cred", category: "Transfers & Payments" },
+  { keyword: "emergency fund vault", category: "Transfers & Payments" },
+  { keyword: "house vault", category: "Transfers & Payments" },
+  { keyword: "to checking -", category: "Transfers & Payments" },
+  { keyword: "to savings -", category: "Transfers & Payments" },
+  // Travel and dining wording from synced cards
+  { keyword: "harbin hot springs", category: "Travel" },
+  { keyword: "turo", category: "Travel" },
+  { keyword: "metra", category: "Travel" },
+  { keyword: "ventra", category: "Travel" },
+  { keyword: "arboretum", category: "Travel" },
+  { keyword: "tst*", category: "Dining" },
+  { keyword: "eatery", category: "Dining" },
+  { keyword: "paypal", category: "Shopping" },
+  { keyword: "carson valley oil", category: "Fuel & Propane" },
+  { keyword: "bp#", category: "Fuel & Propane" },
   { keyword: "claude by anth", category: "Software & AI" },
   // Bank-sync wording for moves between your own accounts
   { keyword: "ach: eric gorski", category: "Transfers & Payments" },
@@ -507,6 +532,8 @@ function positiveTransferCategory(desc) {
   // US Bank exports "PAYMENT   THANK YOU" with padded spaces - without collapsing them,
   // every card payment was being counted as income.
   const d = String(desc || "").toLowerCase().replace(/\s+/g, " ");
+  // Money moved in from GNWS Main Checking (0844) is personal income.
+  if (/transfer deposit 0844/.test(d)) return null;
   const transferHints = [
     "payment thank you",
     "payment - thank you",
