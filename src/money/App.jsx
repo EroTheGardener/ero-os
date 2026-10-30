@@ -5,7 +5,7 @@ import {
   liveDebts, SEED_BILLS, upcoming, addPeriod, loadExtras, saveKey, MANUAL_KEY, SELL_KEY, HISTORY_KEY,
   PERIODS, periodRange, inRange, monthsIn, categoryAverages, budgetFor, forecast,
 } from "./store.js";
-import { LineChart } from "./charts.jsx";
+import { LineChart, BarChart } from "./charts.jsx";
 import { isIncomeCategory, categorySort, merchantKey, simulate, prettyYM } from "../DebtPayoff.jsx";
 
 const TABS = [
@@ -25,6 +25,7 @@ const Icon = ({ d, className = "w-5 h-5" }) => (
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 const thisYM = () => todayISO().slice(0, 7);
 const niceDate = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const longDate = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 const daysUntil = (iso) => Math.round((new Date(iso + "T12:00:00") - new Date(todayISO() + "T12:00:00")) / 864e5);
 const cleanAcct = (name) => name.replace(/\s*\(X*\d{4}\)\s*$/, "").replace(/�+/g, "").replace(/\s{2,}/g, " ").trim();
 
@@ -471,7 +472,7 @@ function Reports({ data, updateHistory }) {
     const n = period === "month" ? 12 : period === "quarter" ? 8 : 5;
     return keys.slice(0, n).map((k) => ({ k, ...summarize(state.txns, state.rules, (t) => t.ym && keyOf(t.ym) === k) }));
   }, [state, period]);
-  const max = Math.max(1, ...rows.map((r) => Math.max(r.income, r.spent)));
+  const [openK, setOpenK] = useState(null);
   const label = (k) => (period === "month" ? prettyYM(k) : k);
   const chart = [...rows].reverse();
   const pts = history.points || [];
@@ -484,26 +485,17 @@ function Reports({ data, updateHistory }) {
     <>
       <PageHeader title="Reports" right={<Segmented value={period} onChange={setPeriod} options={[["month", "Month"], ["quarter", "Quarter"], ["year", "Year"]]} />} />
       <Card className="p-4">
-        <div className="flex items-end gap-2 h-44">
-          {chart.map((r) => (
-            <div key={r.k} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-              <div className="flex items-end gap-0.5 h-36 w-full justify-center">
-                <div className="w-1/2 max-w-[14px] rounded-t bg-[var(--green)]" style={{ height: `${(r.income / max) * 100}%` }} title={`In ${fmt(r.income)}`} />
-                <div className="w-1/2 max-w-[14px] rounded-t bg-[var(--red)] opacity-80" style={{ height: `${(r.spent / max) * 100}%` }} title={`Out ${fmt(r.spent)}`} />
-              </div>
-              <div className="text-[10px] text-[var(--muted)] truncate w-full text-center">{period === "month" ? prettyYM(r.k).slice(0, 3) : r.k.replace(/^\d{2}/, "'")}</div>
-            </div>
-          ))}
-        </div>
+        <BarChart rows={chart} label={(k, full) => (period === "month" ? (full ? prettyYM(k) : prettyYM(k).slice(0, 3)) : full ? k : k.replace(/^\d{2}/, "'"))} />
         <div className="flex gap-4 text-[12px] text-[var(--muted)] mt-2">
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--green)]" />Came in</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--red)] opacity-80" />Spent</span>
+          <span className="ml-auto">Hover or tap a bar for amounts</span>
         </div>
       </Card>
       <SectionTitle>By {period}</SectionTitle>
       <List>
         {rows.map((r) => (
-          <Row key={r.k} left={label(r.k)} sub={`In ${fmt(r.income)} · Out ${fmt(r.spent)}`}
+          <Row key={r.k} left={label(r.k)} sub={`In ${fmt(r.income)} · Out ${fmt(r.spent)}`} onClick={() => setOpenK(r)}
             right={<span className={r.net >= 0 ? "text-[var(--green)]" : "text-[var(--red)]"}>{r.net >= 0 ? "+" : ""}{fmt(r.net)}</span>} />
         ))}
       </List>
@@ -514,15 +506,28 @@ function Reports({ data, updateHistory }) {
           <span className="text-[28px] font-semibold tabular-nums">{last?.score ?? "—"}</span>
           {last && <span className="text-[13px] text-[var(--muted)]">{[last.experian && `Experian ${last.experian}`, last.transunion && `TransUnion ${last.transunion}`, last.equifax && `Equifax ${last.equifax}`].filter(Boolean).join(" · ") || niceDate(last.date)}</span>}
         </div>
-        <LineChart points={scores} zero={false} format={(v) => Math.round(v)} xLabel={yr} color="var(--accent)" />
+        <LineChart points={scores} zero={false} format={(v) => Math.round(v)} axis={(v) => Math.round(v)} xLabel={(d, full) => (full ? longDate(d) : yr(d))} color="var(--accent)" />
       </Card>
 
       <SectionTitle>Net worth (from your Fuel Units sheet)</SectionTitle>
       <Card className="p-4">
-        <LineChart points={nets} xLabel={yr} color="var(--green)" />
+        <LineChart points={nets} xLabel={(d, full) => (full ? longDate(d) : yr(d))} color="var(--green)" />
         <div className="text-[12px] text-[var(--muted)] mt-1">Excludes the house. {nets.length} check-ins since {nets[0] ? yr(nets[0].x).replace("'", "20") : "—"}.</div>
       </Card>
       <div className="text-[13px] text-[var(--muted)] px-1 mt-3">Transfers between your own accounts, card payments and money set aside for retirement are left out of in/out, so this is real money in and out.</div>
+      {openK && (
+        <Sheet title={`${label(openK.k)} · in and out`} onClose={() => setOpenK(null)}>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div><div className="text-[13px] text-[var(--muted)]">Came in</div><div className="text-[20px] font-semibold text-[var(--green)] tabular-nums">{fmt(openK.income)}</div></div>
+            <div><div className="text-[13px] text-[var(--muted)]">Spent</div><div className="text-[20px] font-semibold tabular-nums">{fmt(openK.spent)}</div></div>
+            <div><div className="text-[13px] text-[var(--muted)]">Net</div><div className={`text-[20px] font-semibold tabular-nums ${openK.net >= 0 ? "text-[var(--green)]" : "text-[var(--red)]"}`}>{fmt(openK.net)}</div></div>
+          </div>
+          <SectionTitle>Where it came from</SectionTitle>
+          <List>{Object.values(openK.byCat).filter((c) => c.income).sort((a, b) => b.total - a.total).map((c) => <Row key={c.cat} left={c.cat} sub={`${c.n} deposits`} right={<span className="text-[var(--green)]">{fmt(c.total)}</span>} />)}</List>
+          <SectionTitle>Where it went</SectionTitle>
+          <List>{Object.values(openK.byCat).filter((c) => !c.income).sort((a, b) => b.total - a.total).map((c) => <Row key={c.cat} left={c.cat} sub={`${c.n} transactions`} right={fmt(c.total)} />)}</List>
+        </Sheet>
+      )}
       {addScore && <ScoreSheet onClose={() => setAddScore(false)} onSave={(p) => { updateHistory((h) => ({ ...h, points: [...(h.points || []), p].sort((a, b) => a.date.localeCompare(b.date)) })); setAddScore(false); }} />}
     </>
   );
@@ -548,38 +553,67 @@ function ScoreSheet({ onSave, onClose }) {
 
 /* ================= DEBT PLAN ================= */
 
+// Minimum payments come from the Bills tab (statement amounts) when a bill matches the debt.
+const BILL_FOR_DEBT = { "usb-0292": "usb-0292", "usb-0452": "usb-0452", "excite-loan": "excite-loan", "excite-cc": "excite-visa", "chase-amzn": "chase", "wf-reflect": "wf" };
+
 function DebtPlan({ data, updateState }) {
   const { state, balances, bills, manual } = data;
-  const debts = liveDebts(state.debts, balances.accounts || []).filter((d) => d.balance > 0.5);
-  const [budget, setBudget] = useState(state.budget ?? 1600);
-  const res = useMemo(() => simulate(debts, Number(budget) || 0, "avalanche", thisYM()), [debts, budget]);
+  const debts = liveDebts(state.debts, balances.accounts || [])
+    .map((d) => { const b = bills.find((x) => x.id === BILL_FOR_DEBT[d.id]); return b?.amount ? { ...d, minPayment: b.amount } : d; })
+    .filter((d) => d.balance > 0.5);
+  const minTotal = Math.round(debts.reduce((s, d) => s + (d.minPayment || 0), 0));
+  const [budget, setBudget] = useState(state.budget ? String(state.budget) : "");
+  const planAmt = Number(budget) || minTotal;
+  const ym = thisYM();
+  const minRes = useMemo(() => simulate(debts, minTotal, "avalanche", ym), [debts, minTotal, ym]);
+  const res = useMemo(() => simulate(debts, planAmt, "avalanche", ym), [debts, planAmt, ym]);
   const total = debts.reduce((s, d) => s + d.balance, 0);
-  const minTotal = debts.reduce((s, d) => s + (d.minPayment || 0), 0);
   const ordered = [...debts].sort((a, b) => (b.apr || 0) - (a.apr || 0));
   const payoff = Object.fromEntries((res.order || []).map((o) => [o.id, o.ym]));
   const cash = cashTotal(balances.accounts || [], manual);
   const fc = useMemo(() => forecast({ cash, bills, txns: state.txns, rules: state.rules, days: 90 }), [cash, bills, state]);
   const low = fc.pts.reduce((m, p) => (p.bal < m.bal ? p : m), fc.pts[0]);
+  const extra = planAmt > minTotal && !res.infeasible;
+  const len = Math.max(minRes.series?.length || 0, res.series?.length || 0);
+  const pad = (ser) => Array.from({ length: len }, (_, j) => ({ x: (minRes.series[j] || ser[j] || {}).ym, y: ser[j] ? ser[j].total : 0 }));
 
   return (
     <>
       <PageHeader title="Debt plan" sub={`${fmt(total)} across ${debts.length} debts · highest rate first`} />
-      <Card className="p-4">
+
+      <SectionTitle>Where you're headed</SectionTitle>
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="p-4">
+          <div className="text-[13px] text-[var(--muted)]">Minimums only ({fmt(minTotal)}/mo)</div>
+          <div className="text-[22px] font-semibold mt-1">{minRes.capped ? "Never" : prettyYM(minRes.debtFree)}</div>
+          <div className="text-[13px] text-[var(--red)] tabular-nums">{fmt(minRes.totalInterest)} interest</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-[13px] text-[var(--muted)]">{extra ? `Your plan (${fmt(planAmt)}/mo)` : "Add extra below to compare"}</div>
+          <div className="text-[22px] font-semibold mt-1">{extra ? prettyYM(res.debtFree) : "—"}</div>
+          <div className="text-[13px] text-[var(--green)] tabular-nums">{extra ? `saves ${fmt(minRes.totalInterest - res.totalInterest)} and ${minRes.months - res.months} months` : ""}</div>
+        </Card>
+      </div>
+      <Card className="p-4 mt-3">
+        <LineChart
+          series={[
+            { name: "Minimums", color: "var(--red)", points: pad(minRes.series || []) },
+            ...(extra ? [{ name: "Your plan", color: "var(--green)", points: pad(res.series || []) }] : []),
+          ]}
+          xLabel={(m, full) => (m ? (full ? prettyYM(m) : `'${m.slice(2, 4)}`) : "")} />
+        <div className="text-[12px] text-[var(--muted)] mt-1">Total debt over time. Uses your live card balances and the minimums on the Bills tab.</div>
+      </Card>
+
+      <Card className="p-4 mt-3">
         <div className="flex items-center gap-3">
           <div className="flex-1 text-[15px]">Monthly toward debt</div>
-          <input className={`${input} text-right`} style={{ width: 120 }} inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)}
+          <input className={`${input} text-right`} style={{ width: 120 }} inputMode="decimal" value={budget} placeholder={String(minTotal)} onChange={(e) => setBudget(e.target.value)}
             onBlur={() => updateState((s) => ({ ...s, budget: Number(budget) || 0 }))} />
         </div>
-        <div className="text-[13px] text-[var(--muted)] mt-2">Minimums add up to {fmt(minTotal)}.</div>
-        {res.infeasible ? (
-          <div className="mt-3 text-[15px] text-[var(--red)]">That's below your minimums.</div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <div><div className="text-[13px] text-[var(--muted)]">Debt-free</div><div className="text-[22px] font-semibold">{prettyYM(res.debtFree)}</div></div>
-            <div><div className="text-[13px] text-[var(--muted)]">Interest to pay</div><div className="text-[22px] font-semibold tabular-nums">{fmt(res.totalInterest)}</div></div>
-          </div>
-        )}
+        <div className="text-[13px] text-[var(--muted)] mt-2">Minimums add up to {fmt(minTotal)}. Leave blank to see minimums only, or type more to see what extra does.</div>
+        {res.infeasible && <div className="mt-2 text-[15px] text-[var(--red)]">That's below your minimums.</div>}
       </Card>
+
       <SectionTitle>Pay in this order</SectionTitle>
       <List>
         {ordered.map((d, i) => (
@@ -595,7 +629,7 @@ function DebtPlan({ data, updateState }) {
           <span>Lowest point</span>
           <span className={`tabular-nums font-semibold ${low.bal < 500 ? "text-[var(--red)]" : ""}`}>{fmt(low.bal)} on {niceDate(low.date)}</span>
         </div>
-        <LineChart points={fc.pts.map((p) => ({ x: p.date, y: p.bal }))} xLabel={(d) => niceDate(d)} color="var(--accent)" />
+        <LineChart points={fc.pts.map((p) => ({ x: p.date, y: p.bal }))} xLabel={(d, full) => (full ? longDate(d) : niceDate(d))} color="var(--accent)" />
         <div className="text-[12px] text-[var(--muted)] mt-1">
           Starts with today's cash ({fmt(cash)}), takes out every bill on the Bills tab, and adds your paycheck ({fmt(fc.paycheck)} every 2 weeks) and rent (about {fmt(fc.rentMonthly)}/mo).
         </div>

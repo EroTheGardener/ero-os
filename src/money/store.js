@@ -204,7 +204,7 @@ export function periodRange(p, now = new Date()) {
   const today = iso(now);
   const ago = (n) => iso(new Date(now.getTime() - (n - 1) * 864e5));
   switch (p) {
-    case "last-month": return [iso(new Date(Date.UTC(y, m - 1, 1))), iso(new Date(Date.UTC(y, m, 0)))];
+    case "last-month": return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
     case "7d": return [ago(7), today];
     case "14d": return [ago(14), today];
     case "30d": return [ago(30), today];
@@ -212,7 +212,7 @@ export function periodRange(p, now = new Date()) {
     case "qtd": return [iso(new Date(Date.UTC(y, Math.floor(m / 3) * 3, 1))), today];
     case "ytd": return [`${y}-01-01`, today];
     case "all": return ["0000-01-01", today];
-    default: return [iso(new Date(Date.UTC(y, m, 1))), today];
+    default: return [iso(new Date(y, m, 1)), today];
   }
 }
 export const inRange = ([a, b]) => (t) => t.date && t.date >= a && t.date <= b;
