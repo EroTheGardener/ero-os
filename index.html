@@ -6,6 +6,9 @@
     <title>Ero's Money</title>
     <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1C1C1E" media="(prefers-color-scheme: dark)" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Ero's Money" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -17,5 +20,8 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+      <script>
+      if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+    </script>
   </body>
 </html>
