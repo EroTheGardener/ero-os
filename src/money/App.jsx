@@ -520,7 +520,7 @@ function BillSheet({ bill, noun = "bill", onSave, onDelete, onClose }) {
 
 /* ================= REPORTS ================= */
 
-function Reports({ data, updateHistory }) {
+function Reports({ data, updateState, updateHistory }) {
   const { state, history } = data;
   const [period, setPeriod] = useState("month");
   const [addScore, setAddScore] = useState(false);
@@ -531,6 +531,11 @@ function Reports({ data, updateHistory }) {
     return keys.slice(0, n).map((k) => ({ k, ...summarize(state.txns, state.rules, (t) => t.ym && keyOf(t.ym) === k) }));
   }, [state, period]);
   const [openK, setOpenK] = useState(null);
+  const [openCat, setOpenCat] = useState(null);
+  // Re-read the open period from live rows so recategorizing updates the totals in place.
+  const cur = openK ? rows.find((r) => r.k === openK.k) || openK : null;
+  const avgs = useMemo(() => categoryAverages(state.txns, state.rules), [state]);
+  const keyOfP = (ym) => (period === "month" ? ym : period === "quarter" ? quarterOf(ym) : ym.slice(0, 4));
   const label = (k) => (period === "month" ? prettyYM(k) : k);
   const chart = [...rows].reverse();
   const pts = history.points || [];
@@ -576,16 +581,17 @@ function Reports({ data, updateHistory }) {
       {openK && (
         <Sheet title={`${label(openK.k)} · in and out`} onClose={() => setOpenK(null)}>
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div><div className="text-[13px] text-[var(--muted)]">Came in</div><div className="text-[20px] font-semibold text-[var(--green)] tabular-nums">{fmt(openK.income)}</div></div>
-            <div><div className="text-[13px] text-[var(--muted)]">Spent</div><div className="text-[20px] font-semibold tabular-nums">{fmt(openK.spent)}</div></div>
-            <div><div className="text-[13px] text-[var(--muted)]">Net</div><div className={`text-[20px] font-semibold tabular-nums ${openK.net >= 0 ? "text-[var(--green)]" : "text-[var(--red)]"}`}>{fmt(openK.net)}</div></div>
+            <div><div className="text-[13px] text-[var(--muted)]">Income</div><div className="text-[20px] font-semibold text-[var(--green)] tabular-nums">{fmt(cur.income)}</div></div>
+            <div><div className="text-[13px] text-[var(--muted)]">Outgoing</div><div className="text-[20px] font-semibold tabular-nums">{fmt(cur.spent)}</div></div>
+            <div><div className="text-[13px] text-[var(--muted)]">Net</div><div className={`text-[20px] font-semibold tabular-nums ${cur.net >= 0 ? "text-[var(--green)]" : "text-[var(--red)]"}`}>{fmt(cur.net)}</div></div>
           </div>
-          <SectionTitle>Where it came from</SectionTitle>
-          <List>{Object.values(openK.byCat).filter((c) => c.income).sort((a, b) => b.total - a.total).map((c) => <Row key={c.cat} left={c.cat} sub={`${c.n} deposits`} right={<span className="text-[var(--green)]">{fmt(c.total)}</span>} />)}</List>
-          <SectionTitle>Where it went</SectionTitle>
-          <List>{Object.values(openK.byCat).filter((c) => !c.income).sort((a, b) => b.total - a.total).map((c) => <Row key={c.cat} left={c.cat} sub={`${c.n} transactions`} right={fmt(c.total)} />)}</List>
+          <SectionTitle>Income</SectionTitle>
+          <List>{Object.values(cur.byCat).filter((c) => c.income).sort((a, b) => b.total - a.total).map((c) => <Row key={c.cat} left={c.cat} sub={`${c.n} deposits`} right={<span className="text-[var(--green)]">{fmt(c.total)}</span>} onClick={() => setOpenCat(c.cat)} />)}</List>
+          <SectionTitle>Outgoing</SectionTitle>
+          <List>{Object.values(cur.byCat).filter((c) => !c.income).sort((a, b) => b.total - a.total).map((c) => <Row key={c.cat} left={c.cat} sub={`${c.n} transactions`} right={fmt(c.total)} onClick={() => setOpenCat(c.cat)} />)}</List>
         </Sheet>
       )}
+      {openK && openCat && <CategorySheet cat={openCat} filter={(t) => !!t.ym && keyOfP(t.ym) === openK.k} label={label(openK.k)} avg={avgs[openCat]} state={state} updateState={updateState} onClose={() => setOpenCat(null)} />}
       {addScore && <ScoreSheet onClose={() => setAddScore(false)} onSave={(p) => { updateHistory((h) => ({ ...h, points: [...(h.points || []), p].sort((a, b) => a.date.localeCompare(b.date)) })); setAddScore(false); }} />}
     </>
   );
